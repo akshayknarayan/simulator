@@ -9,6 +9,8 @@ pub mod event;
 pub mod topology;
 pub mod packet;
 pub mod node;
+pub mod flow;
+pub mod congcontrol;
 
 #[cfg(test)]
 mod tests {

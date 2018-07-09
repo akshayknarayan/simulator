@@ -1,6 +1,6 @@
 #[derive(Clone, Debug)]
 pub struct PacketHeader {
-    pub id: u32, // packet_id
+    pub id: u32, // flow_id
     pub from: u32,
     pub to: u32,
 }
