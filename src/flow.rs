@@ -1,10 +1,11 @@
+use std::fmt::Debug;
 use super::Result;
 use super::packet::{Packet, PacketHeader};
 
 use congcontrol::CongAlg;
 use congcontrol::ReductionType;
 
-pub trait Flow {
+pub trait Flow: Debug {
     fn flow_id(&self) -> u32;
     fn sender_id(&self) -> u32;
     fn dest_id(&self) -> u32;
@@ -15,6 +16,7 @@ pub trait Flow {
     fn exec(&mut self) -> Result<Vec<Packet>>;
 }
 
+#[derive(Debug)]
 pub struct GoBackN<CC: CongAlg> {
     flow_id: u32,
     sender_id: u32,
@@ -45,7 +47,7 @@ impl<CC: CongAlg> Flow for GoBackN<CC> {
     }
     
     fn exec(&mut self) -> Result<Vec<Packet>> {
-        unimplemented!()
+        self.maybe_send_more()
     }
 }
 

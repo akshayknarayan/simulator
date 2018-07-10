@@ -44,6 +44,7 @@ impl TopologyStrategy for OneBigSwitch {
                     to: num_hosts,
                 },
                 to_send: vec![],
+                active_flows: vec![],
             }
         }).collect::<Vec<Host>>();
 

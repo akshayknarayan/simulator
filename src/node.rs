@@ -7,6 +7,8 @@ use super::packet::Packet;
 use super::event::{Event, EventTime};
 use super::topology::Topology;
 
+use super::flow::Flow;
+
 /// A Node is an entity that can receive Packets.
 pub trait Node : Debug {
     fn id(&self) -> u32;
@@ -28,6 +30,7 @@ pub struct Host {
     pub id: u32,
     pub active: bool,
     pub link: Link, // host does not need a Queue locally since it controls its own packet transmissions
+    pub active_flows: Vec<Box<Flow>>,
     pub to_send: Vec<Packet>,
 }
 
@@ -35,6 +38,11 @@ impl Host {
     pub fn push_pkt(&mut self, p: Packet) {
         println!("pushing packet onto {:?}", self.id);
         self.to_send.push(p)
+    }
+
+    pub fn flow_arrival(&mut self, f: Box<Flow>) {
+        self.active_flows.push(f);
+        self.active = true;
     }
 }
 
@@ -45,15 +53,28 @@ impl Node for Host {
 
     fn receive(&mut self, p: Packet) -> Result<Vec<Box<Event>>> {
         println!("{:?} got packet: {:?}", self.id, p);
+        let active_flows = &mut self.active_flows;
+        let pkts_to_send = &mut self.to_send;
+        match p.clone() {
+            Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
+                let flow_id = hdr.id;
+                let f = active_flows.iter_mut().find(|f| f.flow_id() == flow_id).unwrap();
+                pkts_to_send.extend(f.receive(p)?);
+            }
+            _ => unimplemented!(),
+        }
         Ok(vec![])
     }
 
     fn exec(&mut self) -> Result<Vec<Box<Event>>> {
-        let pkts = &mut self.to_send;
+        let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
         let id = self.id;
 
+        let new_pkts = flows.iter_mut().flat_map(|f| f.exec().unwrap().into_iter());
+        let pkts = &mut self.to_send;
+        pkts.extend(new_pkts);
         pkts.pop().map_or_else(|| {
             *active = false;
             println!("now inactive {:?}", id);
