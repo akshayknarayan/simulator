@@ -58,11 +58,19 @@ impl Node for Host {
         match p.clone() {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.id;
-                let f = active_flows.iter_mut().find(|f| f.flow_id() == flow_id).unwrap();
-                pkts_to_send.extend(f.receive(p)?);
+                if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
+                    f.receive(p)
+                        .map(|pkts| {
+                            pkts_to_send.extend(pkts);
+                        })?;
+                    self.active = true;
+                } else {
+                    println!("got isolated packet {:?}", p);
+                }
             }
             _ => unimplemented!(),
         }
+
         Ok(vec![])
     }
 
@@ -183,8 +191,8 @@ impl Node for Switch {
         match p {
             Packet::Pause | Packet::Resume => unimplemented!(),
             Packet::Nack{..} => unimplemented!(),
-            Packet::Ack{..} => unimplemented!(),
-            Packet::Data{hdr, length, seq} => {
+            Packet::Ack{hdr, ..} |
+            Packet::Data{hdr, ..} => {
 				self.rack
                     .iter_mut()
                     .find(|ref mut q| {
@@ -193,7 +201,7 @@ impl Node for Switch {
                     })
 					.map_or_else(|| unimplemented!(), |rack_link_queue| {
 						// send packet out on rack_link_queue
-						rack_link_queue.enqueue(Packet::Data{hdr, length, seq}); // could result in a drop
+						rack_link_queue.enqueue(p); // could result in a drop
                         Ok(vec![])
 					})
             }
@@ -237,7 +245,7 @@ impl Event for LinkTransmitEvent {
 
     fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
         let to = self.0.to;
-        topo.lookup_node(to).receive(self.1.clone())
+        topo.lookup_node(to)?.receive(self.1.clone())
     }
 }
 

@@ -6,14 +6,14 @@ pub enum ReductionType {
     Ecn,
 }
 
-pub trait CongAlg: Debug {
+pub trait CongAlg: Clone + Debug {
     fn new() -> Self;
     fn cwnd(&self) -> u32;
     fn on_packet(&mut self, acked: u32, rtt: Nanos) -> u32;
     fn reduction(&mut self, reduction: ReductionType) -> u32;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConstCwnd(u32);
 
 impl CongAlg for ConstCwnd {

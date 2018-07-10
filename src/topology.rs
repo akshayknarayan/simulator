@@ -1,4 +1,4 @@
-use super::Nanos;
+use super::{Nanos, Result};
 use super::node::{Node, Host, Link, Switch, Queue, DropTailQueue};
 
 pub trait TopologyStrategy {
@@ -69,15 +69,21 @@ impl Topology {
             .filter(|h| h.is_active())
     }
 
-    pub fn lookup_host(&mut self, id: u32) -> &mut Host {
-        &mut self.hosts[id as usize]
+    pub fn lookup_host(&mut self, id: u32) -> Result<&mut Host> {
+        if (id as usize) < self.hosts.len() {
+            Ok(&mut self.hosts[id as usize])
+        } else {
+            bail!("Invalid host id: {:?}", id)
+        }
     }
 
-    pub fn lookup_node(&mut self, id: u32) -> &mut Node {
+    pub fn lookup_node(&mut self, id: u32) -> Result<&mut Node> {
         if (id as usize) < self.hosts.len() {
-            self.lookup_host(id) as &mut Node
+            self.lookup_host(id).map(|h| h as &mut Node)
+        } else if ((id as usize) - self.hosts.len()) < self.switches.len() {
+            Ok(&mut self.switches[(id as usize) - self.hosts.len()])
         } else {
-            &mut self.switches[(id as usize) - self.hosts.len()]
+            bail!("Invalid hode id: {:?}", id)
         }
     }
 }
@@ -87,6 +93,6 @@ mod tests {
     use super::{OneBigSwitch, TopologyStrategy};
     #[test]
     fn make() {
-        let t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000);
+        let _t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000);
     }
 }
