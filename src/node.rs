@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
-use super::topology::Topology;
+use super::topology::{Topology, TopologyNode};
 
 use super::flow::Flow;
 
@@ -240,10 +240,11 @@ impl Event for LinkTransmitEvent {
     }
 
     fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
-        let from = self.0.from;
-        topo.lookup_host(from).map(|h| { h.active = true; }).unwrap_or_else(|_| ()); // throw away failure (not host)
         let to = self.0.to;
-        topo.lookup_node(to)?.receive(self.1.clone())
+        match topo.lookup_node(to)? {
+            TopologyNode::Host(n) => n.receive(self.1.clone()),
+            TopologyNode::Switch(n) => n.receive(self.1.clone()),
+        }
     }
 }
 

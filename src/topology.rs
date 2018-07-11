@@ -58,6 +58,11 @@ impl TopologyStrategy for OneBigSwitch {
     }
 }
 
+pub enum TopologyNode<'a> {
+    Host(&'a mut Host),
+    Switch(&'a mut Switch),
+}
+
 #[derive(Debug)]
 pub struct Topology {
     pub hosts: Vec<Host>,
@@ -80,13 +85,13 @@ impl Topology {
         }
     }
 
-    pub fn lookup_node(&mut self, id: u32) -> Result<&mut Node> {
+    pub fn lookup_node<'a>(&'a mut self, id: u32) -> Result<TopologyNode> {
         if (id as usize) < self.hosts.len() {
-            self.lookup_host(id).map(|h| h as &mut Node)
+            self.lookup_host(id).map(|h| TopologyNode::Host(h))
         } else if ((id as usize) - self.hosts.len()) < self.switches.len() {
-            Ok(&mut self.switches[(id as usize) - self.hosts.len()])
+            Ok(TopologyNode::Switch(&mut self.switches[(id as usize) - self.hosts.len()]))
         } else {
-            bail!("Invalid hode id: {:?}", id)
+            bail!("Invalid node id: {:?}", id)
         }
     }
 }
