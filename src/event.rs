@@ -43,13 +43,13 @@ impl Eq for EventContainer{}
 
 impl PartialOrd for EventContainer {
     fn partial_cmp(&self, other: &EventContainer) -> Option<Ordering> {
-        Some(self.cmp(other))
+        other.1.partial_cmp(&self.1)
     }
 }
 
 impl Ord for EventContainer {
     fn cmp(&self, other: &EventContainer) -> Ordering {
-        (self.1 as i64 * -1).cmp(&(other.1 as i64 * -1))
+        other.1.cmp(&self.1)
     }
 }
 
@@ -89,13 +89,22 @@ impl Executor {
             .for_each(|new_ev| push_onto(now, new_ev, events_heap))
     }
 
-    pub fn execute(mut self) {
+    pub fn execute(mut self) -> Self {
         loop {
             match self.events.pop() {
                 Some(evc) => {
-                    if evc.1 > self.current_time {
+                    assert!(
+                        evc.1 >= self.current_time, 
+                        "event time {:?} before current time {:?}", evc.1, self.current_time,
+                    );
+
+                    let evc = if evc.1 > self.current_time {
+                        self.events.push(evc);
                         self.poll_nodes();
-                    }
+                        self.events.pop().unwrap()
+                    } else {
+                        evc
+                    };
 
                     self.current_time = evc.1;
 
@@ -110,11 +119,15 @@ impl Executor {
                     self.poll_nodes(); // try to poll nodes one last time
                     if self.events.is_empty() {
                         println!("[{:?}] exiting", self.current_time);
-                        return;
+                        return self;
                     }
                 }
             }
         }
+    }
+
+    pub fn current_time(&self) -> Nanos {
+        self.current_time
     }
 }
 
