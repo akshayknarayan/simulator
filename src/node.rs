@@ -76,19 +76,15 @@ impl Node for Host {
         let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
-        let id = self.id;
 
         let new_pkts = flows.iter_mut().flat_map(|f| f.exec().unwrap().into_iter());
         let pkts = &mut self.to_send;
         pkts.extend(new_pkts);
-
-        println!("exec {:?}: pkts: {:?}", id, pkts);
         *active = false;
         pkts.pop_front().map_or_else(|| {
             Err(format_err!("no more pending outgoing packets"))
         }, |pkt| {
-            println!("{:?} transmitting {:?}", id, pkt);
-            Ok(vec![Box::new(LinkTransmitEvent(link, pkt)) as Box<Event>])
+            Ok(vec![Box::new(NodeTransmitEvent(link, pkt)) as Box<Event>])
         })
     }
 
@@ -175,6 +171,20 @@ pub struct Switch {
     pub core: Vec<Box<Queue>>,
 }
 
+impl Switch {
+    fn reactivate(&mut self, l: Link) {
+        assert_eq!(l.from, self.id);
+        self.rack.iter_mut()
+            .chain(self.core.iter_mut())
+            .find(|ref q| {
+                q.link().to == l.to
+            })
+            .map_or_else(|| unimplemented!(), |link_queue| {
+                link_queue.set_active(true);
+            });
+    }
+}
+
 impl Node for Switch {
     fn id(&self) -> u32 {
         self.id
@@ -191,7 +201,7 @@ impl Node for Switch {
             Packet::Data{hdr, ..} => {
 				self.rack
                     .iter_mut()
-                    .find(|ref mut q| {
+                    .find(|ref q| {
                         let link_dst = q.link().to;
                         link_dst == hdr.to
                     })
@@ -211,6 +221,7 @@ impl Node for Switch {
                 q.is_active()
             })
             .filter_map(|q| {
+                q.set_active(false);
                 if let Some(pkt) = q.dequeue() {
                     Some(
                         Box::new(
@@ -218,7 +229,6 @@ impl Node for Switch {
                         ) as Box<Event>,
                     )
                 } else {
-                    q.set_active(false);
                     None
                 }
             })
@@ -260,10 +270,23 @@ impl Event for NodeTransmitEvent {
         EventTime::Delta(transmission_delay)
     }
 
-    fn exec<'a>(&mut self, _: &mut Topology) -> Result<Vec<Box<Event>>> {
+    fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
+        let from = self.0.from;
+        topo.lookup_node(from).map(|tn| {
+            match tn {
+                TopologyNode::Host(h) => { h.active = true; }
+                TopologyNode::Switch(s) => {
+                    s.reactivate(self.0);
+                }
+            }
+        })
+        .unwrap_or_else(|_| ()); // throw away failure (not host)
+            
+        println!("{:?} transmitted {:?}", from, self.1);
+
         Ok(vec![
             Box::new(
-                LinkTransmitEvent(self.0, self.1.clone())
+                LinkTransmitEvent(self.0, self.1)
             )
         ])
     }
