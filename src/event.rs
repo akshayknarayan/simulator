@@ -97,7 +97,10 @@ impl Executor {
                         self.poll_nodes();
                     }
 
+                    self.current_time = evc.1;
+
                     let mut ev = evc.0;
+                    print!("[{:?}] ", self.current_time);
                     let new_evs = ev.exec(&mut self.topology).unwrap();
                     for new_ev in new_evs {
                         self.push(new_ev);
