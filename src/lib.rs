@@ -23,7 +23,7 @@ mod tests {
     use super::congcontrol::ConstCwnd;
 
     fn setup_test() -> Executor {
-        let t = topology::OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000);
+        let t = topology::OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000_000);
         Executor::new(t)
     }
     
@@ -46,7 +46,8 @@ mod tests {
             topo.lookup_host(0).unwrap().push_pkt(pkt);
         }
 
-        e.execute();
+        let e = e.execute();
+        assert_eq!(e.current_time(), 26000000);
     }
 
     #[test]
@@ -60,8 +61,11 @@ mod tests {
             length_bytes: 4380, // 3 packet flow
             max_packet_length: 1460,
         };
-        let flow_arrival = Box::new(FlowArrivalEvent(flowinfo, 1_000_000_000, PhantomData::<ConstCwnd>)); // arrives at t = 1.0s
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flowinfo, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
-        e.execute();
+        let e = e.execute();
+        assert_eq!(e.current_time(), 1052640000);
     }
 }
