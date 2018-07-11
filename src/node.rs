@@ -32,13 +32,13 @@ pub struct Host {
     pub active: bool,
     pub link: Link, // host does not need a Queue locally since it controls its own packet transmissions
     pub active_flows: Vec<Box<Flow>>,
-    pub to_send: Vec<Packet>,
+    pub to_send: VecDeque<Packet>,
 }
 
 impl Host {
     pub fn push_pkt(&mut self, p: Packet) {
         println!("pushing packet onto {:?}", self.id);
-        self.to_send.push(p)
+        self.to_send.push_back(p)
     }
 
     pub fn flow_arrival(&mut self, f: Box<Flow>) {
@@ -60,10 +60,7 @@ impl Node for Host {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.id;
                 if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
-                    f.receive(p)
-                        .map(|pkts| {
-                            pkts_to_send.extend(pkts);
-                        })?;
+                    f.receive(p).map(|pkts| { pkts_to_send.extend(pkts); })?;
                     self.active = true;
                 } else {
                     println!("got isolated packet {:?}", p);
@@ -84,16 +81,14 @@ impl Node for Host {
         let new_pkts = flows.iter_mut().flat_map(|f| f.exec().unwrap().into_iter());
         let pkts = &mut self.to_send;
         pkts.extend(new_pkts);
-        pkts.pop().map_or_else(|| {
-            *active = false;
-            println!("now inactive {:?}", id);
-            Err(format_err!("foo"))
+
+        println!("exec {:?}: pkts: {:?}", id, pkts);
+        *active = false;
+        pkts.pop_front().map_or_else(|| {
+            Err(format_err!("no more pending outgoing packets"))
         }, |pkt| {
-            println!("transmitting pkt {:?}", pkt);
-            Ok(vec![Box::new(LinkTransmitEvent(
-                link,
-                pkt,
-            )) as Box<Event>])
+            println!("{:?} transmitting {:?}", id, pkt);
+            Ok(vec![Box::new(LinkTransmitEvent(link, pkt)) as Box<Event>])
         })
     }
 
