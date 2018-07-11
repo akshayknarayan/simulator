@@ -1,51 +1,9 @@
-use std::fmt::Debug;
-use std::marker::PhantomData;
-use super::{Nanos, Result};
-use super::packet::{Packet, PacketHeader};
-use super::event::{Event, EventTime};
-use super::topology::Topology;
-use congcontrol::{CongAlg,ReductionType};
+use ::Result;
+use ::congcontrol::{CongAlg, ReductionType};
+use super::{Flow, FlowInfo};
+use ::packet::{Packet, PacketHeader};
 
-pub struct FlowArrivalEvent<CC: CongAlg + 'static>(pub FlowInfo, pub Nanos, pub PhantomData<CC>);
-
-impl<CC: CongAlg> Event for FlowArrivalEvent<CC> {
-    fn time(&self) -> EventTime {
-        EventTime::Absolute(self.1)
-    }
-
-    fn exec<'a>(&mut self, t: &mut Topology) -> Result<Vec<Box<Event>>> {
-        let (f_send, f_recv) = go_back_n::<CC>(self.0);
-        {
-            let sender = t.lookup_host(self.0.sender_id)?;
-            sender.flow_arrival(f_send);
-        }
-        {
-        let receiver = t.lookup_host(self.0.dest_id)?;
-        receiver.flow_arrival(f_recv);
-        }
-        Ok(vec![])
-    }
-}
-
-#[derive(Clone,Copy,Debug)]
-pub struct FlowInfo {
-    pub flow_id: u32,
-    pub sender_id: u32,
-    pub dest_id: u32,
-    pub length_bytes: u32,
-    pub max_packet_length: u32,
-}
-
-pub trait Flow: Debug {
-    fn flow_info(&self) -> FlowInfo;
-    /// Process an incoming packet
-    /// Return reaction outgoing packets.
-    fn receive(&mut self, pkt: Packet) -> Result<Vec<Packet>>;
-    /// Return proactive outgoing packets.
-    fn exec(&mut self) -> Result<Vec<Packet>>;
-}
-
-pub fn go_back_n<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNReceiver>) {
+pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNReceiver>) {
     (
         Box::new(GoBackNSender {
             flow_info: fi,
@@ -131,11 +89,11 @@ impl<CC: CongAlg> GoBackNSender<CC> {
     }
 
     fn maybe_send_more(&mut self) -> Result<Vec<Packet>> {
-        let cwnd = self.cong_control.cwnd();
+        let cwnd = self.cong_control.cwnd() * self.flow_info.max_packet_length;
         let mut pkts = vec![];
         loop {
             if self.next_to_send < self.cumulative_acked + cwnd {
-                if self.next_to_send + self.flow_info.max_packet_length < self.flow_info.length_bytes {
+                if self.next_to_send + self.flow_info.max_packet_length <= self.flow_info.length_bytes {
                     // send a full size packet and continue
                     let pkt = Packet::Data{
                         hdr: PacketHeader{
@@ -149,7 +107,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
 
                     self.next_to_send += self.flow_info.max_packet_length;
                     pkts.push(pkt);
-                } else {
+                } else if self.next_to_send < self.flow_info.length_bytes {
                     let pkt = Packet::Data{
                         hdr: PacketHeader{
                             id: self.flow_info.flow_id,
@@ -163,11 +121,15 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                     self.next_to_send += self.flow_info.length_bytes - self.next_to_send;
                     pkts.push(pkt);
                     break;
+                } else {
+                    break;
                 }
             } else {
                 break
             }
         }
+
+        println!("sending {:?}", pkts);
 
         Ok(pkts)
     }
