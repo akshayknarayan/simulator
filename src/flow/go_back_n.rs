@@ -129,8 +129,6 @@ impl<CC: CongAlg> GoBackNSender<CC> {
             }
         }
 
-        println!("sending {:?}", pkts);
-
         Ok(pkts)
     }
 
@@ -159,7 +157,6 @@ impl Flow for GoBackNReceiver {
 impl GoBackNReceiver {
     // ack-ing side
     fn got_data(&mut self, data: Packet) -> Result<Vec<Packet>> {
-        println!("GBN receiver {:?} got {:?}, expect {:?}", self.flow_info.flow_id, data, self.cumulative_received);
         match data {
             Packet::Data{hdr, seq, length} => {
                 assert_eq!(hdr.id, self.flow_info.flow_id);
