@@ -22,6 +22,7 @@ pub trait Node : Debug {
 pub struct Link {
     pub propagation_delay: Nanos,
     pub bandwidth_bps: u64,
+    pub from: u32,
     pub to: u32,
 }
 
@@ -244,6 +245,8 @@ impl Event for LinkTransmitEvent {
     }
 
     fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
+        let from = self.0.from;
+        topo.lookup_host(from).map(|h| { h.active = true; }).unwrap_or_else(|_| ()); // throw away failure (not host)
         let to = self.0.to;
         topo.lookup_node(to)?.receive(self.1.clone())
     }

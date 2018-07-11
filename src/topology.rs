@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use super::{Nanos, Result};
 use super::node::{Node, Host, Link, Switch, Queue, DropTailQueue};
 
@@ -27,6 +28,7 @@ impl TopologyStrategy for OneBigSwitch {
                     Link{
                         propagation_delay: per_link_propagation_delay,
                         bandwidth_bps: access_link_bandwidth,
+                        from: num_hosts,
                         to: id,
                     },
                 )) as Box<Queue>
@@ -41,9 +43,10 @@ impl TopologyStrategy for OneBigSwitch {
                 link: Link{
                     propagation_delay: per_link_propagation_delay,
                     bandwidth_bps: access_link_bandwidth,
+                    from: id,
                     to: num_hosts,
                 },
-                to_send: vec![],
+                to_send: VecDeque::new(),
                 active_flows: vec![],
             }
         }).collect::<Vec<Host>>();
