@@ -68,4 +68,34 @@ mod tests {
         let e = e.execute();
         assert_eq!(e.current_time(), 1052640000);
     }
+    
+    #[test]
+    fn two_flows() {
+        let t = topology::OneBigSwitch::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        let mut e = Executor::new(t);
+
+        let flow1 = FlowInfo{
+            flow_id: 1,
+            sender_id: 1,
+            dest_id: 0,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+        
+        let flow2 = FlowInfo{
+            flow_id: 2,
+            sender_id: 2,
+            dest_id: 0,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow1, 1_000_000_000, PhantomData::<ConstCwnd>)); 
+        e.push(flow_arrival);
+        let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
+        e.push(flow_arrival);
+        let e = e.execute();
+        //assert_eq!(e.current_time(), 1052640000);
+    }
 }

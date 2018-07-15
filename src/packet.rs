@@ -24,8 +24,7 @@ impl Packet {
     pub fn get_size_bytes(&self) -> u32 {
         match self {
             Packet::Pause | Packet::Resume => unimplemented!(),
-            Packet::Nack{..} => unimplemented!(),
-            Packet::Ack{hdr, ..} => hdr.get_size_bytes(),
+            Packet::Nack{hdr, ..} | Packet::Ack{hdr, ..} => hdr.get_size_bytes(),
             Packet::Data{hdr, length, ..} => {
                 length + hdr.get_size_bytes()
             }

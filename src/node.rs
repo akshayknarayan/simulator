@@ -196,7 +196,7 @@ impl Node for Switch {
         // switches are output queued
         match p {
             Packet::Pause | Packet::Resume => unimplemented!(),
-            Packet::Nack{..} => unimplemented!(),
+            Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} |
             Packet::Data{hdr, ..} => {
 				self.rack
