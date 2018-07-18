@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 use super::{Nanos, Result};
-use super::node::{Node, Host, Link, Switch, Queue, DropTailQueue};
+use super::node::{Node, Host, Link};
+use super::node::switch::{Switch, Queue};
+use super::node::switch::drop_tail_queue::DropTailQueue;
 
 pub trait TopologyStrategy {
     fn make_topology(
