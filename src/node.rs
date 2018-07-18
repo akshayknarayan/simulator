@@ -12,8 +12,8 @@ use super::flow::Flow;
 /// A Node is an entity that can receive Packets.
 pub trait Node : Debug {
     fn id(&self) -> u32;
-    fn receive(&mut self, p: Packet) -> Result<Vec<Box<Event>>>;
-    fn exec(&mut self) -> Result<Vec<Box<Event>>>;
+    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
+    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
     fn is_active(&self) -> bool;
 }
 
@@ -52,7 +52,7 @@ impl Node for Host {
         self.id
     }
 
-    fn receive(&mut self, p: Packet) -> Result<Vec<Box<Event>>> {
+    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>> {
         println!("{:?} got packet: {:?}", self.id, p);
         let active_flows = &mut self.active_flows;
         let pkts_to_send = &mut self.to_send;
@@ -60,7 +60,7 @@ impl Node for Host {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.id;
                 if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
-                    f.receive(p).map(|pkts| { pkts_to_send.extend(pkts); })?;
+                    f.receive(time, p).map(|pkts| { pkts_to_send.extend(pkts); })?;
                     self.active = true;
                 } else {
                     println!("got isolated packet {:?}", p);
@@ -72,12 +72,12 @@ impl Node for Host {
         Ok(vec![])
     }
 
-    fn exec(&mut self) -> Result<Vec<Box<Event>>> {
+    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>> {
         let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
 
-        let new_pkts = flows.iter_mut().flat_map(|f| f.exec().unwrap().into_iter());
+        let new_pkts = flows.iter_mut().flat_map(|f| f.exec(time).unwrap().into_iter());
         let pkts = &mut self.to_send;
         pkts.extend(new_pkts);
         *active = false;
@@ -96,7 +96,7 @@ impl Node for Host {
 /// Queues are tied to a specfic link.
 pub trait Queue : Debug {
     fn link(&self) -> Link;
-    fn enqueue(&mut self, p: Packet);
+    fn enqueue(&mut self, p: Packet) -> Option<()>;
     fn dequeue(&mut self) -> Option<Packet>;
     fn peek(&self) -> Option<&Packet>;
     fn is_active(&self) -> bool;
@@ -139,15 +139,16 @@ impl Queue for DropTailQueue {
         self.active = a;
     }
     
-    fn enqueue(&mut self, p: Packet) {
+    fn enqueue(&mut self, p: Packet) -> Option<()> {
         let occupancy_bytes = self.occupancy_bytes();
         if occupancy_bytes + p.get_size_bytes() > self.limit_bytes {
             // we have to drop this packet
-            return;
+            return None;
         }
 
         self.pkts.push_back(p);
         self.set_active(true);
+        Some(())
     }
 
     fn dequeue(&mut self) -> Option<Packet> {
@@ -190,9 +191,10 @@ impl Node for Switch {
         self.id
     }
 
-    fn receive(&mut self, p: Packet) -> Result<Vec<Box<Event>>> {
+    fn receive(&mut self, p: Packet, _time: Nanos) -> Result<Vec<Box<Event>>> {
         self.active = true;
-        println!("switch {:?} got pkt: {:?}", self.id, p);
+        let id = self.id;
+        println!("{:?} got pkt: {:?}", id, p);
         // switches are output queued
         match p {
             Packet::Pause | Packet::Resume => unimplemented!(),
@@ -207,14 +209,17 @@ impl Node for Switch {
                     })
 					.map_or_else(|| unimplemented!(), |rack_link_queue| {
 						// send packet out on rack_link_queue
-						rack_link_queue.enqueue(p); // could result in a drop
+						if let None = rack_link_queue.enqueue(p) {
+                            // packet was dropped
+                            println!("{:?} dropping pkt: {:?}", id, p);
+                        }
                         Ok(vec![])
 					})
             }
         }
     }
 
-    fn exec(&mut self) -> Result<Vec<Box<Event>>> {
+    fn exec(&mut self, _time: Nanos) -> Result<Vec<Box<Event>>> {
         // step all queues forward
         let evs = self.rack.iter_mut().chain(self.core.iter_mut())
             .filter(|q| {
@@ -249,11 +254,11 @@ impl Event for LinkTransmitEvent {
         EventTime::Delta(self.0.propagation_delay)
     }
 
-    fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
+    fn exec<'a>(&mut self, time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
         let to = self.0.to;
         match topo.lookup_node(to)? {
-            TopologyNode::Host(n) => n.receive(self.1.clone()),
-            TopologyNode::Switch(n) => n.receive(self.1.clone()),
+            TopologyNode::Host(n) => n.receive(self.1.clone(), time),
+            TopologyNode::Switch(n) => n.receive(self.1.clone(), time),
         }
     }
 }
@@ -270,7 +275,7 @@ impl Event for NodeTransmitEvent {
         EventTime::Delta(transmission_delay)
     }
 
-    fn exec<'a>(&mut self, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
+    fn exec<'a>(&mut self, _time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
         let from = self.0.from;
         topo.lookup_node(from).map(|tn| {
             match tn {

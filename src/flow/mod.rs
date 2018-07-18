@@ -13,7 +13,7 @@ impl<CC: CongAlg> Event for FlowArrivalEvent<CC> {
         EventTime::Absolute(self.1)
     }
 
-    fn exec<'a>(&mut self, t: &mut Topology) -> Result<Vec<Box<Event>>> {
+    fn exec<'a>(&mut self, _time: Nanos, t: &mut Topology) -> Result<Vec<Box<Event>>> {
         let (f_send, f_recv) = go_back_n::new::<CC>(self.0);
         {
             let sender = t.lookup_host(self.0.sender_id)?;
@@ -40,9 +40,9 @@ pub trait Flow: Debug {
     fn flow_info(&self) -> FlowInfo;
     /// Process an incoming packet
     /// Return reaction outgoing packets.
-    fn receive(&mut self, pkt: Packet) -> Result<Vec<Packet>>;
+    fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>>;
     /// Return proactive outgoing packets.
-    fn exec(&mut self) -> Result<Vec<Packet>>;
+    fn exec(&mut self, time: Nanos) -> Result<Vec<Packet>>;
 }
 
 pub mod go_back_n;

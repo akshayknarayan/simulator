@@ -19,7 +19,7 @@ pub enum EventTime {
 
 pub trait Event {
     fn time(&self) -> EventTime; // when this should trigger
-    fn exec<'a>(&mut self, topo: &'a mut Topology) -> Result<Vec<Box<Event>>>; // execute the event
+    fn exec<'a>(&mut self, time: Nanos, topo: &'a mut Topology) -> Result<Vec<Box<Event>>>; // execute the event
 }
 
 struct EventContainer(Box<Event>, Nanos);
@@ -84,7 +84,7 @@ impl Executor {
         let top = &mut self.topology;
         top
             .active_nodes()
-            .filter_map(|n| n.exec().ok())
+            .filter_map(|n| n.exec(now).ok())
             .flat_map(|i| i)
             .for_each(|new_ev| push_onto(now, new_ev, events_heap))
     }
@@ -110,7 +110,7 @@ impl Executor {
 
                     let mut ev = evc.0;
                     print!("[{:?}] ", self.current_time);
-                    let new_evs = ev.exec(&mut self.topology).unwrap();
+                    let new_evs = ev.exec(self.current_time, &mut self.topology).unwrap();
                     for new_ev in new_evs {
                         self.push(new_ev);
                     }
