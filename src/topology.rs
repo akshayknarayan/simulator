@@ -30,6 +30,7 @@ impl TopologyStrategy for OneBigSwitch {
                     Link{
                         propagation_delay: per_link_propagation_delay,
                         bandwidth_bps: access_link_bandwidth,
+                        pfc_enabled: false,
                         from: num_hosts,
                         to: id,
                     },
@@ -46,6 +47,7 @@ impl TopologyStrategy for OneBigSwitch {
                 link: Link{
                     propagation_delay: per_link_propagation_delay,
                     bandwidth_bps: access_link_bandwidth,
+                    pfc_enabled: false,
                     from: id,
                     to: num_hosts,
                 },

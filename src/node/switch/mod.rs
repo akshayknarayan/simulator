@@ -12,6 +12,7 @@ pub trait Queue : Debug {
     fn enqueue(&mut self, p: Packet) -> Option<()>;
     fn dequeue(&mut self) -> Option<Packet>;
     fn peek(&self) -> Option<&Packet>;
+    fn headroom(&self) -> u32;
     fn is_active(&self) -> bool;
     fn set_active(&mut self, a: bool);
     fn is_paused(&self) -> bool;
@@ -40,6 +41,35 @@ impl Switch {
                 link_queue.set_active(true);
             });
     }
+
+    fn pause_incoming(&mut self) {
+        let id = self.id;
+        // send pauses to upstream queues
+        self.rack
+            .iter_mut()
+            .chain(self.core.iter_mut())
+            .filter(|q| {
+                q.link().from != id
+            })
+        .for_each(|q| {
+            q.enqueue(Packet::Pause(id)).unwrap();
+        });
+    }
+
+    fn resume_incoming(&mut self) {
+        let id = self.id;
+                
+        self.rack
+            .iter_mut()
+            .chain(self.core.iter_mut())
+            .filter(|q| {
+                q.link().from != id
+            })
+            .for_each(|q| {
+                q.enqueue(Packet::Resume(id));
+            });
+
+    }
 }
 
 impl Node for Switch {
@@ -64,17 +94,7 @@ impl Node for Switch {
                         rack_link_queue.set_paused(false);
                     });
 
-                // send pauses to upstream queues
-                self.rack
-                    .iter_mut()
-                    .chain(self.core.iter_mut())
-                    .filter(|q| {
-                        q.link().from != id
-                    })
-                    .for_each(|q| {
-                        q.enqueue(Packet::Pause(id));
-                    });
-
+                self.pause_incoming();
                 Ok(vec![])
 			}
 			Packet::Resume(from) => {
@@ -87,22 +107,14 @@ impl Node for Switch {
 					.map_or_else(|| unimplemented!(), |rack_link_queue| {
                         rack_link_queue.set_paused(true);
                     });
-                
-                self.rack
-                    .iter_mut()
-                    .chain(self.core.iter_mut())
-                    .filter(|q| {
-                        q.link().from != id
-                    })
-                    .for_each(|q| {
-                        q.enqueue(Packet::Resume(id));
-                    });
 
+                self.resume_incoming();
                 Ok(vec![])
 			},
             Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} |
             Packet::Data{hdr, ..} => {
+                let mut should_pause = false;
 				self.rack
                     .iter_mut()
                     .find(|ref q| {
@@ -115,14 +127,25 @@ impl Node for Switch {
                             // packet was dropped
                             println!("{:?} dropping pkt: {:?}", id, p);
                         }
-                        Ok(vec![])
-					})
+
+                        if rack_link_queue.headroom() < rack_link_queue.link().pfc_pause_threshold() {
+                            // outgoing queue has filled up
+                            should_pause = true;
+                        }
+					});
+                
+                if should_pause {
+                    self.pause_incoming();
+                }
+
+                Ok(vec![])
             }
         }
     }
 
     fn exec(&mut self, _time: Nanos) -> Result<Vec<Box<Event>>> {
         // step all queues forward
+        let mut should_resume = false;
         let evs = self.rack.iter_mut().chain(self.core.iter_mut())
             .filter(|q| {
                 q.is_active()
@@ -130,6 +153,11 @@ impl Node for Switch {
             .filter_map(|q| {
                 q.set_active(false);
                 if let Some(pkt) = q.dequeue() {
+                    // check if queue is sufficiently empty
+                    if q.is_paused() && q.headroom() > q.link().pfc_resume_threshold() {
+                        should_resume = true;
+                    }
+
                     Some(
                         Box::new(
                             NodeTransmitEvent(q.link(), pkt)
@@ -140,6 +168,11 @@ impl Node for Switch {
                 }
             })
             .collect::<Vec<Box<Event>>>();
+
+        if should_resume {
+            self.resume_incoming();
+        }
+
         Ok(evs)
     }
 

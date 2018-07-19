@@ -24,8 +24,38 @@ pub trait Node : Debug {
 pub struct Link {
     pub propagation_delay: Nanos,
     pub bandwidth_bps: u64,
+    pub pfc_enabled: bool,
     pub from: u32,
     pub to: u32,
+}
+
+impl Link {
+    // The minimum amount of queue we must reserve for incoming bytes before
+    // the PAUSE we send takes effect.
+    // Must be conservative to prevent loss in the worst case!
+    // https://www.cisco.com/c/en/us/products/collateral/switches/nexus-7000-series-switches/white_paper_c11-542809.html
+    // 1. Link BDP: Packets transmitted before the PAUSE arrives at sender
+    //  = propagation_delay * link_bw
+    // 2. Delay in transmitting PAUSE packet (just transmitted first byte of packet before
+    //    PAUSE)
+    //  = 1 MTU = 1500 Bytes
+    // 3. Extra transmission at sender (just transmitted first byte as PAUSE received)
+    //  = 1 MTU = 1500 Bytes
+    //
+    // to disable PFC (allow drops): return 0
+    fn pfc_pause_threshold(&self) -> u32 {
+        if !self.pfc_enabled {
+            0
+        } else {
+            let bdp = self.propagation_delay * self.bandwidth_bps / 1_000_000_000 / 8; // bytes
+            bdp as u32 + 1500 + 1500
+        }
+    }
+
+    // resume once there are 2 MTUs of space before the PFC threshold 
+    fn pfc_resume_threshold(&self) -> u32 {
+        self.pfc_pause_threshold() + 2 * 1500
+    }
 }
 
 #[derive(Default, Debug)]

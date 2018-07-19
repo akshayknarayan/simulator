@@ -34,20 +34,8 @@ impl Queue for DropTailQueue {
         self.link
     }
 
-    fn is_active(&self) -> bool {
-        self.active && !self.paused
-    }
-
-    fn set_active(&mut self, a: bool) {
-        self.active = a;
-    }
-
-    fn is_paused(&self) -> bool {
-        self.paused
-    }
-
-    fn set_paused(&mut self, a: bool) {
-        self.paused = a;
+    fn headroom(&self) -> u32 {
+        self.limit_bytes - self.occupancy_bytes()
     }
     
     fn enqueue(&mut self, p: Packet) -> Option<()> {
@@ -72,5 +60,21 @@ impl Queue for DropTailQueue {
     
     fn peek(&self) -> Option<&Packet> {
         self.pkts.front()
+    }
+
+    fn is_active(&self) -> bool {
+        self.active && !self.paused
+    }
+
+    fn set_active(&mut self, a: bool) {
+        self.active = a;
+    }
+
+    fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    fn set_paused(&mut self, a: bool) {
+        self.paused = a;
     }
 }
