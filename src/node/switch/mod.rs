@@ -14,6 +14,8 @@ pub trait Queue : Debug {
     fn peek(&self) -> Option<&Packet>;
     fn is_active(&self) -> bool;
     fn set_active(&mut self, a: bool);
+    fn is_paused(&self) -> bool;
+    fn set_paused(&mut self, a: bool);
 }
 
 pub mod drop_tail_queue;
@@ -51,7 +53,53 @@ impl Node for Switch {
         println!("{:?} got pkt: {:?}", id, p);
         // switches are output queued
         match p {
-            Packet::Pause | Packet::Resume => unimplemented!(),
+            Packet::Pause(from) => {
+				self.rack
+					.iter_mut()
+					.find(|ref q| {
+						let link_src = q.link().from;
+						link_src == from
+					})
+					.map_or_else(|| unimplemented!(), |rack_link_queue| {
+                        rack_link_queue.set_paused(false);
+                    });
+
+                // send pauses to upstream queues
+                self.rack
+                    .iter_mut()
+                    .chain(self.core.iter_mut())
+                    .filter(|q| {
+                        q.link().from != id
+                    })
+                    .for_each(|q| {
+                        q.enqueue(Packet::Pause(id));
+                    });
+
+                Ok(vec![])
+			}
+			Packet::Resume(from) => {
+				self.rack
+					.iter_mut()
+					.find(|ref q| {
+						let link_src = q.link().from;
+						link_src == from
+					})
+					.map_or_else(|| unimplemented!(), |rack_link_queue| {
+                        rack_link_queue.set_paused(true);
+                    });
+                
+                self.rack
+                    .iter_mut()
+                    .chain(self.core.iter_mut())
+                    .filter(|q| {
+                        q.link().from != id
+                    })
+                    .for_each(|q| {
+                        q.enqueue(Packet::Resume(id));
+                    });
+
+                Ok(vec![])
+			},
             Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} |
             Packet::Data{hdr, ..} => {

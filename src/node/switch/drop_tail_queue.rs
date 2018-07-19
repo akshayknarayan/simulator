@@ -10,6 +10,7 @@ pub struct DropTailQueue{
     link: Link,
     pkts: VecDeque<Packet>,
     active: bool,
+    paused: bool,
 }
 
 impl DropTailQueue {
@@ -19,6 +20,7 @@ impl DropTailQueue {
             link,
             pkts: VecDeque::new(),
             active: false,
+            paused: false,
         }
     }
 
@@ -33,11 +35,19 @@ impl Queue for DropTailQueue {
     }
 
     fn is_active(&self) -> bool {
-        self.active
+        self.active && !self.paused
     }
 
     fn set_active(&mut self, a: bool) {
         self.active = a;
+    }
+
+    fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    fn set_paused(&mut self, a: bool) {
+        self.paused = a;
     }
     
     fn enqueue(&mut self, p: Packet) -> Option<()> {

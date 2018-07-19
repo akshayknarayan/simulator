@@ -32,6 +32,7 @@ pub struct Link {
 pub struct Host {
     pub id: u32,
     pub active: bool,
+    pub paused: bool,
     pub link: Link, // host does not need a Queue locally since it controls its own packet transmissions
     pub active_flows: Vec<Box<Flow>>,
     pub to_send: VecDeque<Packet>,
@@ -68,7 +69,14 @@ impl Node for Host {
                     println!("got isolated packet {:?}", p);
                 }
             }
-            _ => unimplemented!(),
+            Packet::Pause(_) => {
+                assert_eq!(self.paused, false);
+                self.paused = true;
+            }
+            Packet::Resume(_) => {
+                assert_eq!(self.paused, true);
+                self.paused = false;
+            }
         }
 
         Ok(vec![])
@@ -78,6 +86,10 @@ impl Node for Host {
         let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
+
+        if self.paused { 
+            return Ok(vec![]);
+        }
 
         let new_pkts = flows.iter_mut().flat_map(|f| f.exec(time).unwrap().into_iter());
         let pkts = &mut self.to_send;

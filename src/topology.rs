@@ -42,6 +42,7 @@ impl TopologyStrategy for OneBigSwitch {
             Host{
                 id,
                 active: true,
+                paused: false,
                 link: Link{
                     propagation_delay: per_link_propagation_delay,
                     bandwidth_bps: access_link_bandwidth,
