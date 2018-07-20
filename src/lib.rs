@@ -15,15 +15,15 @@ pub mod congcontrol;
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
-    use super::topology;
     use super::topology::TopologyStrategy;
+    use super::topology::one_big_switch::OneBigSwitch;
     use super::event::Executor;
     use super::packet::{Packet, PacketHeader};
     use super::flow::{FlowArrivalEvent, FlowInfo};
     use super::congcontrol::ConstCwnd;
 
     fn setup_test() -> Executor {
-        let t = topology::OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000_000);
+        let t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000_000);
         Executor::new(t)
     }
     
@@ -71,7 +71,7 @@ mod tests {
     
     #[test]
     fn two_flows() {
-        let t = topology::OneBigSwitch::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        let t = OneBigSwitch::make_topology(3, 15_000, 1_000_000, 1_000_000);
         let mut e = Executor::new(t);
 
         let flow1 = FlowInfo{
