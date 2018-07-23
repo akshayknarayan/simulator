@@ -74,7 +74,7 @@ impl Switch {
             .iter_mut()
             .chain(self.core.iter_mut())
             .for_each(|(q, _)| {
-                q.enqueue(Packet::Resume(id));
+                q.force_tx_next(Packet::Resume(id)).unwrap();
             });
     }
 }
