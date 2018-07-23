@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
-use super::topology::{Topology, TopologyNode};
+use super::topology::Topology;
 
 use super::flow::Flow;
 
@@ -16,11 +16,12 @@ pub trait Node : Debug {
     fn id(&self) -> u32;
     fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
     fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
+    fn reactivate(&mut self, l: Link);
     fn is_active(&self) -> bool;
 }
 
 /// Links are unidirectional
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
 pub struct Link {
     pub propagation_delay: Nanos,
     pub bandwidth_bps: u64,
@@ -134,6 +135,11 @@ impl Node for Host {
         })
     }
 
+    fn reactivate(&mut self, l: Link) {
+        assert_eq!(self.link, l);
+        self.active = true;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -149,10 +155,7 @@ impl Event for LinkTransmitEvent {
 
     fn exec<'a>(&mut self, time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
         let to = self.0.to;
-        match topo.lookup_node(to)? {
-            TopologyNode::Host(n) => n.receive(self.1.clone(), time),
-            TopologyNode::Switch(n) => n.receive(self.1.clone(), time),
-        }
+        topo.lookup_node(to)?.receive(self.1.clone(), time)
     }
 }
 
@@ -171,12 +174,7 @@ impl Event for NodeTransmitEvent {
     fn exec<'a>(&mut self, _time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
         let from = self.0.from;
         topo.lookup_node(from).map(|tn| {
-            match tn {
-                TopologyNode::Host(h) => { h.active = true; }
-                TopologyNode::Switch(s) => {
-                    s.reactivate(self.0);
-                }
-            }
+            tn.reactivate(self.0);
         })
         .unwrap_or_else(|_| ()); // throw away failure (not host)
         Ok(vec![

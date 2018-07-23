@@ -14,11 +14,6 @@ pub trait TopologyStrategy {
 
 pub mod one_big_switch;
 
-pub enum TopologyNode<'a> {
-    Host(&'a mut Host),
-    Switch(&'a mut Switch),
-}
-
 #[derive(Debug)]
 pub struct Topology {
     pub hosts: Vec<Host>,
@@ -46,11 +41,11 @@ impl Topology {
         }
     }
 
-    pub fn lookup_node<'a>(&'a mut self, id: u32) -> Result<TopologyNode> {
+    pub fn lookup_node<'a>(&'a mut self, id: u32) -> Result<&mut Node> {
         if (id as usize) < self.hosts.len() {
-            self.lookup_host(id).map(|h| TopologyNode::Host(h))
+            Ok(self.lookup_host(id)? as &mut Node)
         } else if ((id as usize) - self.hosts.len()) < self.switches.len() {
-            Ok(TopologyNode::Switch(&mut self.switches[(id as usize) - self.hosts.len()]))
+            Ok(&mut self.switches[(id as usize) - self.hosts.len()])
         } else {
             bail!("Invalid node id: {:?}", id)
         }

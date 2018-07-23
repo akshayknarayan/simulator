@@ -33,18 +33,6 @@ pub struct Switch {
 }
 
 impl Switch {
-    pub fn reactivate(&mut self, l: Link) {
-        assert_eq!(l.from, self.id);
-        self.rack.iter_mut()
-            .chain(self.core.iter_mut())
-            .find(|(ref q, _)| {
-                q.link().to == l.to
-            })
-            .map_or_else(|| unimplemented!(), |(link_queue, _)| {
-                link_queue.set_active(true);
-            });
-    }
-
     fn pause_incoming(&mut self) {
         let id = self.id;
         // send pauses to upstream queues
@@ -190,6 +178,18 @@ impl Node for Switch {
         }
 
         Ok(evs)
+    }
+    
+    fn reactivate(&mut self, l: Link) {
+        assert_eq!(l.from, self.id);
+        self.rack.iter_mut()
+            .chain(self.core.iter_mut())
+            .find(|(ref q, _)| {
+                q.link().to == l.to
+            })
+            .map_or_else(|| unimplemented!(), |(link_queue, _)| {
+                link_queue.set_active(true);
+            });
     }
 
     fn is_active(&self) -> bool {
