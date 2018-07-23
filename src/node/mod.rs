@@ -86,7 +86,7 @@ impl Node for Host {
     }
 
     fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>> {
-        println!("{:?} got packet: {:?}", self.id, p);
+        println!("[{:?}] {:?} got pkt: {:?}", time, self.id, p);
         let active_flows = &mut self.active_flows;
         let pkts_to_send = &mut self.to_send;
         match p.clone() {

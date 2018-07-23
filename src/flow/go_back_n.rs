@@ -16,6 +16,7 @@ pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNRec
         Box::new(GoBackNReceiver {
             flow_info: fi,
             cumulative_received: 0,
+            completion_time: None,
             nack_inflight: false,
         }),
     )
@@ -36,11 +37,16 @@ pub struct GoBackNSender<CC: CongAlg> {
 pub struct GoBackNReceiver {
     flow_info: FlowInfo,
     cumulative_received: u32,
+    completion_time: Option<Nanos>,
     nack_inflight: bool,
 }
 
 impl<CC: CongAlg> Flow for GoBackNSender<CC> {
     fn flow_info(&self) -> FlowInfo { self.flow_info }
+
+    fn completion_time(&self) -> Option<Nanos> {
+        self.completion_time
+    }
 
     fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
         match pkt {
@@ -164,6 +170,10 @@ impl<CC: CongAlg> GoBackNSender<CC> {
 impl Flow for GoBackNReceiver {
     fn flow_info(&self) -> FlowInfo { self.flow_info }
 
+    fn completion_time(&self) -> Option<Nanos> {
+        self.completion_time
+    }
+
     fn receive(&mut self, _time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
         match pkt {
             Packet::Data{..} => self.got_data(pkt),
@@ -188,6 +198,10 @@ impl GoBackNReceiver {
                 if seq == self.cumulative_received {
                     self.cumulative_received += length;
                     self.nack_inflight = false;
+                    if self.cumulative_received == self.flow_info.length_bytes {
+                        self.completion_time = Some(0); // TODO
+                    }
+
                     // send ACK
                     Ok(vec![Packet::Ack{
                         hdr: PacketHeader{

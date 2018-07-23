@@ -1,6 +1,7 @@
 use super::{Nanos, Result};
 use super::node::{Node, Host};
 use super::node::switch::Switch;
+use super::flow::Flow;
 
 pub trait TopologyStrategy {
     fn make_topology(
@@ -30,6 +31,11 @@ impl Topology {
             .map(|h| h as &mut Node)
             .chain(self.switches.iter_mut().map(|s| s as &mut Node))
             .filter(|h| h.is_active())
+    }
+
+    pub fn all_flows(&self) -> impl Iterator<Item=&Box<Flow>> {
+        self.hosts.iter()
+            .flat_map(|h| h.active_flows.iter())
     }
 
     pub fn lookup_host(&mut self, id: u32) -> Result<&mut Host> {

@@ -95,8 +95,9 @@ mod tests {
         e.push(flow_arrival);
         let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
-        let e = e.execute();
-        //assert_eq!(e.current_time(), 1052640000);
+        let mut e = e.execute();
+        
+        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
    
     #[test]
@@ -126,5 +127,7 @@ mod tests {
         let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
         let mut e = e.execute();
+
+        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
 }

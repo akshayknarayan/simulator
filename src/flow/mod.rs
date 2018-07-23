@@ -38,6 +38,9 @@ pub struct FlowInfo {
 
 pub trait Flow: Debug {
     fn flow_info(&self) -> FlowInfo;
+
+    fn completion_time(&self) -> Option<Nanos>;
+
     /// Process an incoming packet
     /// Return reaction outgoing packets.
     fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>>;
