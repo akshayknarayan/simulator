@@ -100,12 +100,12 @@ impl Node for Host {
                 }
             }
             Packet::Pause(_) => {
-                assert_eq!(self.paused, false);
                 self.paused = true;
+                println!("{:?} paused", self.id);
             }
             Packet::Resume(_) => {
-                assert_eq!(self.paused, true);
                 self.paused = false;
+                println!("{:?} resume", self.id);
             }
         }
 
@@ -116,6 +116,7 @@ impl Node for Host {
         let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
+        let id = self.id;
 
         if self.paused { 
             return Ok(vec![]);
@@ -128,6 +129,7 @@ impl Node for Host {
         pkts.pop_front().map_or_else(|| {
             Err(format_err!("no more pending outgoing packets"))
         }, |pkt| {
+            println!("[{:?}] {:?} transmitted {:?}", time, id, pkt);
             Ok(vec![Box::new(NodeTransmitEvent(link, pkt)) as Box<Event>])
         })
     }
@@ -177,9 +179,6 @@ impl Event for NodeTransmitEvent {
             }
         })
         .unwrap_or_else(|_| ()); // throw away failure (not host)
-            
-        println!("{:?} transmitted {:?}", from, self.1);
-
         Ok(vec![
             Box::new(
                 LinkTransmitEvent(self.0, self.1)

@@ -16,18 +16,19 @@ fn one_big_switch(
     let big_switch = Switch{
         id: num_hosts,
         active: false,
-        rack: (0..num_hosts).map(|id| {
+        rack: (0..num_hosts).map(|id| {(
             Box::new(DropTailQueue::new(
-                    queue_length_bytes,
-                    Link{
-                        propagation_delay: per_link_propagation_delay,
-                        bandwidth_bps: access_link_bandwidth,
-                        pfc_enabled,
-                        from: num_hosts,
-                        to: id,
-                    },
-                    )) as Box<Queue>
-        }).collect::<Vec<Box<Queue>>>(),
+                queue_length_bytes,
+                Link{
+                    propagation_delay: per_link_propagation_delay,
+                    bandwidth_bps: access_link_bandwidth,
+                    pfc_enabled,
+                    from: num_hosts,
+                    to: id,
+                },
+            )) as Box<Queue>,
+            false,
+        )}).collect::<Vec<(Box<Queue>, bool)>>(),
         core: vec![],
     };
 

@@ -49,6 +49,18 @@ impl Queue for DropTailQueue {
         self.set_active(true);
         Some(())
     }
+    
+    fn force_tx_next(&mut self, p: Packet) -> Option<()> {
+        let occupancy_bytes = self.occupancy_bytes();
+        if occupancy_bytes + p.get_size_bytes() > self.limit_bytes {
+            // we have to drop this packet
+            return None;
+        }
+
+        self.pkts.push_front(p);
+        self.set_active(true);
+        Some(())
+    }
 
     fn dequeue(&mut self) -> Option<Packet> {
         if self.pkts.len() == 1 {
