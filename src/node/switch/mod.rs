@@ -22,6 +22,8 @@ pub trait Queue : Debug {
 
 pub mod drop_tail_queue;
 
+// TODO split into multiple definitions
+// separate PFC and non-PFC implementation and hide behind trait
 #[derive(Default, Debug)]
 pub struct Switch {
     pub id: u32,
@@ -134,7 +136,9 @@ impl Node for Switch {
                             return;
                         }
 
-                        if !*already_paused && rack_link_queue.headroom() <= rack_link_queue.link().pfc_pause_threshold() {
+                        if rack_link_queue.link().pfc_enabled
+                            && !*already_paused 
+                            && rack_link_queue.headroom() <= rack_link_queue.link().pfc_pause_threshold() {
                             // outgoing queue has filled up
                             *already_paused = true;
                             should_pause = true;
@@ -162,7 +166,9 @@ impl Node for Switch {
                 q.set_active(false);
                 if let Some(pkt) = q.dequeue() {
                     // check if queue is sufficiently empty
-                    if *is_paused && q.headroom() > q.link().pfc_resume_threshold() {
+                    if q.link().pfc_enabled
+                        && *is_paused 
+                        && q.headroom() > q.link().pfc_resume_threshold() {
                         *is_paused = false;
                         should_resume = true;
                     }
