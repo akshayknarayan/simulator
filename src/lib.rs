@@ -135,8 +135,8 @@ mod tests {
             max_packet_length: 1460,
         };
 
-        // starts at t = 1.0s
-        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        // starts at t = 1.1s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_100_000_000, PhantomData::<ConstCwnd>));
         e.push(flow_arrival);
 
         let flow = FlowInfo{
