@@ -4,6 +4,7 @@ use std::collections::BinaryHeap;
 
 use super::{Nanos, Result};
 use super::topology::Topology;
+use super::node::Node;
 
 /// Event driven simulator runtime model:
 /// 1. A single event covers all the computation performed by a single node in a single step of
@@ -19,7 +20,8 @@ pub enum EventTime {
 
 pub trait Event {
     fn time(&self) -> EventTime; // when this should trigger
-    fn exec<'a>(&mut self, time: Nanos, topo: &'a mut Topology) -> Result<Vec<Box<Event>>>; // execute the event
+    fn affected_node_ids(&self) -> Vec<u32>;
+    fn exec<'a>(&mut self, time: Nanos, affected_nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>>; // execute the event
 }
 
 struct EventContainer(Box<Event>, Nanos);
@@ -109,7 +111,10 @@ impl Executor {
                     self.current_time = evc.1;
 
                     let mut ev = evc.0;
-                    let new_evs = ev.exec(self.current_time, &mut self.topology).unwrap();
+                    let new_evs = {
+                        let nds = &mut self.topology.lookup_nodes(&ev.affected_node_ids()).unwrap();
+                        ev.exec(self.current_time, nds).unwrap()
+                    };
                     for new_ev in new_evs {
                         self.push(new_ev);
                     }

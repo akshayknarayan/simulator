@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
-use super::topology::Topology;
+use super::node::Node;
 use congcontrol::CongAlg;
 
 pub struct FlowArrivalEvent<CC: CongAlg + 'static>(pub FlowInfo, pub Nanos, pub PhantomData<CC>);
@@ -13,16 +13,14 @@ impl<CC: CongAlg> Event for FlowArrivalEvent<CC> {
         EventTime::Absolute(self.1)
     }
 
-    fn exec<'a>(&mut self, _time: Nanos, t: &mut Topology) -> Result<Vec<Box<Event>>> {
+    fn affected_node_ids(&self) -> Vec<u32> {
+        vec![self.0.sender_id, self.0.dest_id]
+    }
+
+    fn exec<'a>(&mut self, _time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
         let (f_send, f_recv) = go_back_n::new::<CC>(self.0);
-        {
-            let sender = t.lookup_host(self.0.sender_id)?;
-            sender.flow_arrival(f_send);
-        }
-        {
-        let receiver = t.lookup_host(self.0.dest_id)?;
-        receiver.flow_arrival(f_recv);
-        }
+        nodes[0].flow_arrival(f_send);
+        nodes[1].flow_arrival(f_recv);
         Ok(vec![])
     }
 }

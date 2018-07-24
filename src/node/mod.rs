@@ -5,7 +5,6 @@ use std::fmt::Debug;
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
-use super::topology::Topology;
 
 use super::flow::Flow;
 
@@ -17,6 +16,7 @@ pub trait Node : Debug {
     fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
     fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
     fn reactivate(&mut self, l: Link);
+    fn flow_arrival(&mut self, f: Box<Flow>);
     fn is_active(&self) -> bool;
 }
 
@@ -73,11 +73,6 @@ impl Host {
     pub fn push_pkt(&mut self, p: Packet) {
         println!("pushing packet onto {:?}", self.id);
         self.to_send.push_back(p)
-    }
-
-    pub fn flow_arrival(&mut self, f: Box<Flow>) {
-        self.active_flows.push(f);
-        self.active = true;
     }
 }
 
@@ -140,6 +135,11 @@ impl Node for Host {
         self.active = true;
     }
 
+    fn flow_arrival(&mut self, f: Box<Flow>) {
+        self.active_flows.push(f);
+        self.active = true;
+    }
+
     fn is_active(&self) -> bool {
         self.active
     }
@@ -153,9 +153,12 @@ impl Event for LinkTransmitEvent {
         EventTime::Delta(self.0.propagation_delay)
     }
 
-    fn exec<'a>(&mut self, time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
-        let to = self.0.to;
-        topo.lookup_node(to)?.receive(self.1.clone(), time)
+    fn affected_node_ids(&self) -> Vec<u32> {
+        vec![self.0.to]
+    }
+
+    fn exec<'a>(&mut self, time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
+        nodes[0].receive(self.1.clone(), time)
     }
 }
 
@@ -171,12 +174,15 @@ impl Event for NodeTransmitEvent {
         EventTime::Delta(transmission_delay)
     }
 
-    fn exec<'a>(&mut self, _time: Nanos, topo: &mut Topology) -> Result<Vec<Box<Event>>> {
-        let from = self.0.from;
-        topo.lookup_node(from).map(|tn| {
-            tn.reactivate(self.0);
-        })
-        .unwrap_or_else(|_| ()); // throw away failure (not host)
+    fn affected_node_ids(&self) -> Vec<u32> {
+        vec![self.0.from]
+    }
+
+    fn exec<'a>(&mut self, _time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
+        //topo.lookup_node(from).map(|tn| {
+            nodes[0].reactivate(self.0);
+        //})
+        //.unwrap_or_else(|_| ()); // throw away failure (not host)
         Ok(vec![
             Box::new(
                 LinkTransmitEvent(self.0, self.1)

@@ -1,3 +1,6 @@
+use itertools::Itertools;
+use itertools::EitherOrBoth::{Left, Right, Both};
+
 use super::{Nanos, Result};
 use super::node::{Node, Host};
 use super::node::switch::Switch;
@@ -41,15 +44,68 @@ impl Topology {
         }
     }
 
-    pub fn lookup_node<'a>(&'a mut self, id: u32) -> Result<&mut Node> {
+    pub fn lookup_node<'a>(&'a mut self, id: u32) -> Result<&'a mut Node> {
         if (id as usize) < self.hosts.len() {
-            Ok(self.lookup_host(id)? as &mut Node)
+            Ok(self.lookup_host(id)?)
         } else if ((id as usize) - self.hosts.len()) < self.switches.len() {
             Ok(&mut self.switches[(id as usize) - self.hosts.len()])
         } else {
             bail!("Invalid node id: {:?}", id)
         }
     }
+
+    pub fn lookup_nodes<'a>(&'a mut self, ids: &[u32]) -> Result<Vec<&'a mut Node>> {
+        let hosts = &mut self.hosts;
+        let switches = &mut self.switches;
+
+        let (mut host_ids, mut sw_ids): (Vec<(usize, &u32)>, Vec<(usize, &u32)>) = ids
+            .into_iter()
+            .enumerate()
+            .partition(|(_, &id)| (id as usize) < hosts.len());
+
+        host_ids.sort_by_key(|(_, &id)| id);
+        sw_ids.sort_by_key(|(_, &id)| id);
+
+        let hs = merge_by_indices(
+            hosts.iter_mut()
+                .map(|h| h as &mut Node), 
+            host_ids.into_iter()
+                .map(|(a, &id)| (a, id)),
+        );
+        let sw = merge_by_indices(
+            switches.iter_mut()
+                .map(|s| s as &mut Node), 
+            sw_ids.into_iter()
+                .map(|(a, &id)| (a, id)),
+        );
+
+        Ok(hs.chain(sw)
+            .sorted_by_key(|x| x.0)
+            .into_iter()
+            .map(|x| x.1)
+            .collect::<Vec<&mut Node>>())
+    }
+}
+
+fn merge_by_indices<'a>(
+    nodes: impl Iterator<Item=&'a mut Node>, 
+    indices: impl Iterator<Item=(usize, u32)>,
+) -> impl Iterator<Item=(usize, &'a mut (Node + 'a))> {
+    nodes
+        .merge_join_by(indices, |n, (b, wanted_id)| {
+            println!("(n{:?}) vs ({:?}, {:?})", n.id(), b, wanted_id);
+            n.id().cmp(&wanted_id)
+        })
+        .filter_map(|either| {
+            match either {
+                Left(_) => None,
+                Right(x) => {
+                    println!("{:?}", x);
+                    None   
+                },
+                Both(h, (wanted_idx, _)) => Some((wanted_idx, h as &mut Node)),
+            }
+        })
 }
 
 #[cfg(test)]
@@ -59,5 +115,15 @@ mod tests {
     #[test]
     fn make() {
         let _t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000);
+    }
+
+    #[test]
+    fn lookup_node() {
+        let mut t = OneBigSwitch::make_topology(5, 15_000, 1_000_000, 1_000);
+        let nodes = t.lookup_nodes(&[2,4,5]).unwrap();
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(nodes[0].id(), 2);
+        assert_eq!(nodes[1].id(), 4);
+        assert_eq!(nodes[2].id(), 5);
     }
 }

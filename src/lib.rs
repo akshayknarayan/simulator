@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate failure;
+extern crate itertools;
 
 use failure::Error;
 type Result<T> = std::result::Result<T, Error>;

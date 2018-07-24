@@ -5,6 +5,7 @@ use ::{Nanos, Result};
 use event::Event;
 use node::{Node, NodeTransmitEvent, Link};
 use packet::Packet;
+use flow::Flow;
    
 /// Queues are tied to a specfic link.
 pub trait Queue : Debug {
@@ -190,6 +191,10 @@ impl Node for Switch {
             .map_or_else(|| unimplemented!(), |(link_queue, _)| {
                 link_queue.set_active(true);
             });
+    }
+
+    fn flow_arrival(&mut self, _: Box<Flow>) {
+        unreachable!()
     }
 
     fn is_active(&self) -> bool {

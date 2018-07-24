@@ -5,3 +5,4 @@ authors = ["Akshay Narayan <akshayn@mit.edu>"]
 
 [dependencies]
 failure = "0.1.1"
+itertools = "0.7.8"
