@@ -16,7 +16,7 @@ pub mod congcontrol;
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
-    use super::topology::TopologyStrategy;
+    use super::topology::{Topology, TopologyStrategy};
     use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
     use super::event::Executor;
     use super::packet::{Packet, PacketHeader};
@@ -71,39 +71,18 @@ mod tests {
     }
     
     #[test]
-    fn two_flows() {
+    fn two_flows_lossy() {
         let t = OneBigSwitch::make_topology(3, 15_000, 1_000_000, 1_000_000);
-        let mut e = Executor::new(t);
-
-        let flow1 = FlowInfo{
-            flow_id: 1,
-            sender_id: 1,
-            dest_id: 0,
-            length_bytes: 43800, // 30 packet flow
-            max_packet_length: 1460,
-        };
-        
-        let flow2 = FlowInfo{
-            flow_id: 2,
-            sender_id: 2,
-            dest_id: 0,
-            length_bytes: 43800, // 30 packet flow
-            max_packet_length: 1460,
-        };
-
-        // starts at t = 1.0s
-        let flow_arrival = Box::new(FlowArrivalEvent(flow1, 1_000_000_000, PhantomData::<ConstCwnd>)); 
-        e.push(flow_arrival);
-        let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
-        e.push(flow_arrival);
-        let mut e = e.execute();
-        
-        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
+        two_flows_scenario(t)
     }
-   
+
     #[test]
     fn two_flows_pfc() {
         let t = OneBigSwitchPFC::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        two_flows_scenario(t)
+    }
+
+    fn two_flows_scenario(t: Topology) {
         let mut e = Executor::new(t);
 
         let flow1 = FlowInfo{
@@ -128,7 +107,7 @@ mod tests {
         let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
         let mut e = e.execute();
-
+        
         assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
 }
