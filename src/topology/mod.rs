@@ -80,6 +80,8 @@ impl Topology {
         );
 
         Ok(hs.chain(sw)
+            .collect::<Result<Vec<(usize, &mut Node)>>>()?
+            .into_iter()
             .sorted_by_key(|x| x.0)
             .into_iter()
             .map(|x| x.1)
@@ -90,20 +92,16 @@ impl Topology {
 fn merge_by_indices<'a>(
     nodes: impl Iterator<Item=&'a mut Node>, 
     indices: impl Iterator<Item=(usize, u32)>,
-) -> impl Iterator<Item=(usize, &'a mut (Node + 'a))> {
+) -> impl Iterator<Item=Result<(usize, &'a mut (Node + 'a))>> {
     nodes
-        .merge_join_by(indices, |n, (b, wanted_id)| {
-            println!("(n{:?}) vs ({:?}, {:?})", n.id(), b, wanted_id);
+        .merge_join_by(indices, |n, (_, wanted_id)| {
             n.id().cmp(&wanted_id)
         })
         .filter_map(|either| {
             match either {
                 Left(_) => None,
-                Right(x) => {
-                    println!("{:?}", x);
-                    None   
-                },
-                Both(h, (wanted_idx, _)) => Some((wanted_idx, h as &mut Node)),
+                Right(x) => Some(Err(format_err!("Node {:?} not found", x))),
+                Both(h, (wanted_idx, _)) => Some(Ok((wanted_idx, h as &mut Node))),
             }
         })
 }
@@ -125,5 +123,11 @@ mod tests {
         assert_eq!(nodes[0].id(), 2);
         assert_eq!(nodes[1].id(), 4);
         assert_eq!(nodes[2].id(), 5);
+    }
+
+    #[test]
+    fn lookup_nonexistent_node() {
+        let mut t = OneBigSwitch::make_topology(5, 15_000, 1_000_000, 1_000);
+        t.lookup_nodes(&[1, 3, 6]).unwrap_err();
     }
 }
