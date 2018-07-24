@@ -55,14 +55,16 @@ impl Ord for EventContainer {
     }
 }
 
-pub struct Executor {
+use node::switch::Switch;
+
+pub struct Executor<S: Switch> {
     events: BinaryHeap<EventContainer>,
     current_time: Nanos,
-    topology: Topology,
+    topology: Topology<S>,
 }
 
-impl Executor {
-    pub fn new(topology: Topology) -> Self {
+impl<S: Switch> Executor<S> {
+    pub fn new(topology: Topology<S>) -> Self {
         Executor{
             events: BinaryHeap::new(),
             current_time: 0,
@@ -70,7 +72,7 @@ impl Executor {
         }
     }
 
-    pub fn topology(&mut self) -> &mut Topology {
+    pub fn topology(&mut self) -> &mut Topology<S> {
         &mut self.topology
     }
 

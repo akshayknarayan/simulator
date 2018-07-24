@@ -19,11 +19,12 @@ mod tests {
     use super::topology::{Topology, TopologyStrategy};
     use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
     use super::event::Executor;
+    use super::node::switch::{Switch, lossy_switch::LossySwitch};
     use super::packet::{Packet, PacketHeader};
     use super::flow::{FlowArrivalEvent, FlowInfo};
     use super::congcontrol::ConstCwnd;
 
-    fn setup_test() -> Executor {
+    fn setup_test() -> Executor<LossySwitch> {
         let t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000_000);
         Executor::new(t)
     }
@@ -82,7 +83,7 @@ mod tests {
         two_flows_scenario(t)
     }
 
-    fn two_flows_scenario(t: Topology) {
+    fn two_flows_scenario<S: Switch>(t: Topology<S>) {
         let mut e = Executor::new(t);
 
         let flow1 = FlowInfo{
@@ -123,7 +124,7 @@ mod tests {
         victim_flow_scenario(t);
     }
 
-    fn victim_flow_scenario(t: Topology) {
+    fn victim_flow_scenario<S: Switch>(t: Topology<S>) {
         let mut e = Executor::new(t);
 
         let flow = FlowInfo{

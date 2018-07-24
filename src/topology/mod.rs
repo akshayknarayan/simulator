@@ -6,24 +6,24 @@ use super::node::{Node, Host};
 use super::node::switch::Switch;
 use super::flow::Flow;
 
-pub trait TopologyStrategy {
+pub trait TopologyStrategy<S: Switch> {
     fn make_topology(
         num_hosts: u32, 
         queue_length_bytes: u32,
         access_link_bandwidth: u64, 
         per_link_propagation_delay: Nanos,
-    ) -> Topology;
+    ) -> Topology<S>;
 }
 
 pub mod one_big_switch;
 
 #[derive(Debug)]
-pub struct Topology {
+pub struct Topology<S: Switch> {
     pub hosts: Vec<Host>,
-    pub switches: Vec<Switch>,
+    pub switches: Vec<S>,
 }
 
-impl Topology {
+impl<S: Switch> Topology<S> {
     pub fn active_nodes(&mut self) -> impl Iterator<Item=&mut Node> {
         self.hosts.iter_mut()
             .map(|h| h as &mut Node)
