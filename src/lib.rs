@@ -47,7 +47,7 @@ mod tests {
             topo.lookup_host(0).unwrap().push_pkt(pkt);
         }
 
-        let e = e.execute();
+        let e = e.execute().unwrap();
         assert_eq!(e.current_time(), 26000000);
     }
 
@@ -66,7 +66,7 @@ mod tests {
         // starts at t = 1.0s
         let flow_arrival = Box::new(FlowArrivalEvent(flowinfo, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
-        let e = e.execute();
+        let e = e.execute().unwrap();
         assert_eq!(e.current_time(), 1052640000);
     }
     
@@ -106,8 +106,8 @@ mod tests {
         e.push(flow_arrival);
         let flow_arrival = Box::new(FlowArrivalEvent(flow2, 1_000_000_000, PhantomData::<ConstCwnd>)); 
         e.push(flow_arrival);
-        let mut e = e.execute();
-        
+
+        let mut e = e.execute().unwrap();
         assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
 
@@ -162,7 +162,7 @@ mod tests {
         let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
         e.push(flow_arrival);
 
-        let mut e = e.execute();
+        let mut e = e.execute().unwrap();
         assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
 }

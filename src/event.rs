@@ -91,7 +91,7 @@ impl Executor {
             .for_each(|new_ev| push_onto(now, new_ev, events_heap))
     }
 
-    pub fn execute(mut self) -> Self {
+    pub fn execute(mut self) -> Result<Self> {
         loop {
             match self.events.pop() {
                 Some(evc) => {
@@ -103,7 +103,7 @@ impl Executor {
                     let evc = if evc.1 > self.current_time {
                         self.events.push(evc);
                         self.poll_nodes();
-                        self.events.pop().unwrap()
+                        self.events.pop().unwrap() // guaranteed since we just pushed it back on
                     } else {
                         evc
                     };
@@ -112,8 +112,8 @@ impl Executor {
 
                     let mut ev = evc.0;
                     let new_evs = {
-                        let nds = &mut self.topology.lookup_nodes(&ev.affected_node_ids()).unwrap();
-                        ev.exec(self.current_time, nds).unwrap()
+                        let nds = &mut self.topology.lookup_nodes(&ev.affected_node_ids())?;
+                        ev.exec(self.current_time, nds)?
                     };
                     for new_ev in new_evs {
                         self.push(new_ev);
@@ -123,7 +123,7 @@ impl Executor {
                     self.poll_nodes(); // try to poll nodes one last time
                     if self.events.is_empty() {
                         println!("[{:?}] exiting", self.current_time);
-                        return self;
+                        return Ok(self);
                     }
                 }
             }
