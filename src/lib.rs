@@ -17,7 +17,7 @@ pub mod congcontrol;
 mod tests {
     use std::marker::PhantomData;
     use super::topology::{Topology, TopologyStrategy};
-    use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
+    use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC, OneBigSwitchNacks};
     use super::event::Executor;
     use super::node::switch::{Switch, lossy_switch::LossySwitch};
     use super::packet::{Packet, PacketHeader};
@@ -121,6 +121,12 @@ mod tests {
     #[test]
     fn victim_flow_pfc() {
         let t = OneBigSwitchPFC::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        victim_flow_scenario(t);
+    }
+
+    #[test]
+    fn victim_flow_nacks() {
+        let t = OneBigSwitchNacks::make_topology(4, 15_000, 1_000_000, 1_000_000);
         victim_flow_scenario(t);
     }
 
