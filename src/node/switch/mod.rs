@@ -24,6 +24,10 @@ pub trait Queue : Debug {
 pub mod drop_tail_queue;
 
 pub trait Switch: Debug {
+    fn new(
+        switch_id: u32, 
+        links: impl Iterator<Item=Box<Queue>>,
+    ) -> Self;
     fn id(&self) -> u32;
     fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
     fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
@@ -59,3 +63,4 @@ impl<S: Switch> Node for S {
 
 pub mod pfc_switch;
 pub mod lossy_switch;
+pub mod nack_switch;

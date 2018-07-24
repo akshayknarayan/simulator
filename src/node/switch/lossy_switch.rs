@@ -15,6 +15,18 @@ pub struct LossySwitch {
 }
 
 impl Switch for LossySwitch {
+    fn new(
+        switch_id: u32,
+        links: impl Iterator<Item=Box<Queue>>,
+    ) -> Self {
+        LossySwitch{
+            id: switch_id,
+            active: false,
+            rack: links.collect::<Vec<Box<Queue>>>(),
+            core: vec![],
+        }
+    }
+
     fn id(&self) -> u32 {
         self.id
     }
@@ -25,32 +37,7 @@ impl Switch for LossySwitch {
         println!("[{:?}] {:?} got pkt: {:?}", time, self.id, p);
         // switches are output queued
         match p {
-            Packet::Pause(from) => {
-				self.rack
-					.iter_mut()
-					.find(|ref q| {
-						let link_src = q.link().from;
-						link_src == from
-					})
-					.map_or_else(|| unimplemented!(), |rack_link_queue| {
-                        rack_link_queue.set_paused(true);
-                    });
-
-                Ok(vec![])
-			}
-			Packet::Resume(from) => {
-				self.rack
-					.iter_mut()
-					.find(|ref q| {
-						let link_src = q.link().from;
-						link_src == from
-					})
-					.map_or_else(|| unimplemented!(), |rack_link_queue| {
-                        rack_link_queue.set_paused(false);
-                    });
-
-                Ok(vec![])
-			},
+            Packet::Pause(_) | Packet::Resume(_) => Ok(vec![]),
             Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} |
             Packet::Data{hdr, ..} => {

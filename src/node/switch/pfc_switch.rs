@@ -52,6 +52,18 @@ impl PFCSwitch {
 }
 
 impl Switch for PFCSwitch {
+    fn new(
+        switch_id: u32,
+        links: impl Iterator<Item=Box<Queue>>,
+    ) -> Self {
+        PFCSwitch{
+            id: switch_id,
+            active: false,
+            rack: links.map(|q| (q, false)).collect::<Vec<(Box<Queue>, bool)>>(),
+            core: vec![],
+        }
+    }
+
     fn id(&self) -> u32 {
         self.id
     }
