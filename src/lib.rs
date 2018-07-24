@@ -110,4 +110,59 @@ mod tests {
         
         assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
     }
+
+    #[test]
+    fn victim_flow_lossy() {
+        let t = OneBigSwitch::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        victim_flow_scenario(t);
+    }
+
+    #[test]
+    fn victim_flow_pfc() {
+        let t = OneBigSwitchPFC::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        victim_flow_scenario(t);
+    }
+
+    fn victim_flow_scenario(t: Topology) {
+        let mut e = Executor::new(t);
+
+        let flow = FlowInfo{
+            flow_id: 0,
+            sender_id: 0,
+            dest_id: 1,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let flow = FlowInfo{
+            flow_id: 1,
+            sender_id: 2,
+            dest_id: 0,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+        
+        let flow = FlowInfo{
+            flow_id: 2,
+            sender_id: 3,
+            dest_id: 0,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let mut e = e.execute();
+        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
+    }
 }
