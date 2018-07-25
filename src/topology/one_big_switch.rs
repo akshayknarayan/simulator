@@ -9,6 +9,69 @@ use node::switch::drop_tail_queue::DropTailQueue;
 
 use super::{Topology, TopologyStrategy};
 
+fn switch_links(
+    num_hosts: u32,
+    queue_length_bytes: u32,
+    access_link_bandwidth: u64,
+    per_link_propagation_delay: Nanos,
+    pfc_enabled: bool,
+) -> impl Iterator<Item=Box<Queue + 'static>> {
+    (0..num_hosts).map(move |id| {
+        Box::new(DropTailQueue::new(
+            queue_length_bytes,
+            Link{
+                propagation_delay: per_link_propagation_delay,
+                bandwidth_bps: access_link_bandwidth,
+                pfc_enabled,
+                from: num_hosts,
+                to: id,
+            },
+        )) as Box<Queue>
+    })
+}
+
+fn hosts(
+    num_hosts: u32,
+    access_link_bandwidth: u64,
+    per_link_propagation_delay: Nanos,
+    pfc_enabled: bool,
+) -> impl Iterator<Item=Host> {
+    (0..num_hosts).map(move |id| {
+        Host{
+            id,
+            active: true,
+            paused: false,
+            link: Link{
+                propagation_delay: per_link_propagation_delay,
+                bandwidth_bps: access_link_bandwidth,
+                pfc_enabled,
+                from: id,
+                to: num_hosts,
+            },
+            to_send: VecDeque::new(),
+            active_flows: vec![],
+        }
+    })
+}
+
+fn topology<S: Switch>(
+    num_hosts: u32,
+    access_link_bandwidth: u64,
+    per_link_propagation_delay: Nanos,
+    pfc_enabled: bool,
+    big_switch: S,
+) -> Topology<S> {
+    Topology{
+        hosts: hosts(
+            num_hosts, 
+            access_link_bandwidth,
+            per_link_propagation_delay,
+            pfc_enabled,
+        ).collect(),
+        switches: vec![big_switch],
+    }
+}
+
 pub struct OneBigSwitch;
 impl TopologyStrategy<LossySwitch> for OneBigSwitch {
     fn make_topology(
@@ -17,42 +80,24 @@ impl TopologyStrategy<LossySwitch> for OneBigSwitch {
         access_link_bandwidth: u64,
         per_link_propagation_delay: Nanos,
     ) -> Topology<LossySwitch> {
-        let links = (0..num_hosts).map(|id| {
-            Box::new(DropTailQueue::new(
+        let big_switch = LossySwitch::new(
+            num_hosts, 
+            switch_links(
+                num_hosts, 
                 queue_length_bytes,
-                Link{
-                    propagation_delay: per_link_propagation_delay,
-                    bandwidth_bps: access_link_bandwidth,
-                    pfc_enabled: false,
-                    from: num_hosts,
-                    to: id,
-                },
-            )) as Box<Queue>
-        });
+                access_link_bandwidth,
+                per_link_propagation_delay,
+                false,
+            ),
+        );
 
-        let big_switch = LossySwitch::new(num_hosts, links);
-
-        let hosts = (0..num_hosts).map(|id| {
-            Host{
-                id,
-                active: true,
-                paused: false,
-                link: Link{
-                    propagation_delay: per_link_propagation_delay,
-                    bandwidth_bps: access_link_bandwidth,
-                    pfc_enabled: false,
-                    from: id,
-                    to: num_hosts,
-                },
-                to_send: VecDeque::new(),
-                active_flows: vec![],
-            }
-        }).collect::<Vec<Host>>();
-
-        Topology{
-            hosts,
-            switches: vec![big_switch],
-        }
+        topology(
+            num_hosts, 
+            access_link_bandwidth,
+            per_link_propagation_delay,
+            false,
+            big_switch,
+        )
     }
 }
 
@@ -64,42 +109,24 @@ impl TopologyStrategy<PFCSwitch> for OneBigSwitchPFC {
         access_link_bandwidth: u64,
         per_link_propagation_delay: Nanos,
     ) -> Topology<PFCSwitch> {
-        let links = (0..num_hosts).map(|id| {
-            Box::new(DropTailQueue::new(
+        let big_switch = PFCSwitch::new(
+            num_hosts, 
+            switch_links(
+                num_hosts, 
                 queue_length_bytes,
-                Link{
-                    propagation_delay: per_link_propagation_delay,
-                    bandwidth_bps: access_link_bandwidth,
-                    pfc_enabled: true,
-                    from: num_hosts,
-                    to: id,
-                },
-            )) as Box<Queue>
-        });
+                access_link_bandwidth,
+                per_link_propagation_delay,
+                true,
+            ),
+        );
 
-        let big_switch = PFCSwitch::new(num_hosts, links);
-
-        let hosts = (0..num_hosts).map(|id| {
-            Host{
-                id,
-                active: true,
-                paused: false,
-                link: Link{
-                    propagation_delay: per_link_propagation_delay,
-                    bandwidth_bps: access_link_bandwidth,
-                    pfc_enabled: true,
-                    from: id,
-                    to: num_hosts,
-                },
-                to_send: VecDeque::new(),
-                active_flows: vec![],
-            }
-        }).collect::<Vec<Host>>();
-
-        Topology{
-            hosts,
-            switches: vec![big_switch],
-        }
+        topology(
+            num_hosts, 
+            access_link_bandwidth,
+            per_link_propagation_delay,
+            true,
+            big_switch,
+        )
     }
 }
 
@@ -111,46 +138,23 @@ impl TopologyStrategy<NackSwitch> for OneBigSwitchNacks {
         access_link_bandwidth: u64,
         per_link_propagation_delay: Nanos,
     ) -> Topology<NackSwitch> {
-        use std::collections::HashMap;
-        let big_switch = NackSwitch{
-            id: num_hosts,
-            active: false,
-            rack: (0..num_hosts).map(|id| {
-                Box::new(DropTailQueue::new(
-                    queue_length_bytes,
-                    Link{
-                        propagation_delay: per_link_propagation_delay,
-                        bandwidth_bps: access_link_bandwidth,
-                        pfc_enabled: false,
-                        from: num_hosts,
-                        to: id,
-                    },
-                )) as Box<Queue>
-            }).collect::<Vec<Box<Queue>>>(),
-            core: vec![],
-            blocked_flows: HashMap::new(),
-        };
+        let big_switch = NackSwitch::new(
+            num_hosts, 
+            switch_links(
+                num_hosts, 
+                queue_length_bytes,
+                access_link_bandwidth,
+                per_link_propagation_delay,
+                false,
+            ),
+        );
 
-        let hosts = (0..num_hosts).map(|id| {
-            Host{
-                id,
-                active: true,
-                paused: false,
-                link: Link{
-                    propagation_delay: per_link_propagation_delay,
-                    bandwidth_bps: access_link_bandwidth,
-                    pfc_enabled: false,
-                    from: id,
-                    to: num_hosts,
-                },
-                to_send: VecDeque::new(),
-                active_flows: vec![],
-            }
-        }).collect::<Vec<Host>>();
-
-        Topology{
-            hosts,
-            switches: vec![big_switch],
-        }
+        topology(
+            num_hosts, 
+            access_link_bandwidth,
+            per_link_propagation_delay,
+            false,
+            big_switch,
+        )
     }
 }
