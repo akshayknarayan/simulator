@@ -34,8 +34,14 @@ pub struct FlowInfo {
     pub max_packet_length: u32,
 }
 
+pub enum FlowSide{
+    Sender,
+    Receiver,
+}
+
 pub trait Flow: Debug {
     fn flow_info(&self) -> FlowInfo;
+    fn side(&self) -> FlowSide;
 
     fn completion_time(&self) -> Option<Nanos>;
 

@@ -1,6 +1,6 @@
 use ::{Nanos, Result};
 use ::congcontrol::{CongAlg, ReductionType};
-use super::{Flow, FlowInfo};
+use super::{Flow, FlowInfo, FlowSide};
 use ::packet::{Packet, PacketHeader};
 
 pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNReceiver>) {
@@ -43,6 +43,7 @@ pub struct GoBackNReceiver {
 
 impl<CC: CongAlg> Flow for GoBackNSender<CC> {
     fn flow_info(&self) -> FlowInfo { self.flow_info }
+    fn side(&self) -> FlowSide { FlowSide::Sender }
 
     fn completion_time(&self) -> Option<Nanos> {
         self.completion_time
@@ -169,6 +170,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
 
 impl Flow for GoBackNReceiver {
     fn flow_info(&self) -> FlowInfo { self.flow_info }
+    fn side(&self) -> FlowSide { FlowSide::Receiver }
 
     fn completion_time(&self) -> Option<Nanos> {
         self.completion_time
