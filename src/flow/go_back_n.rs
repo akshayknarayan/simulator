@@ -7,6 +7,7 @@ pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNRec
     (
         Box::new(GoBackNSender {
             flow_info: fi,
+            start_time: None,
             completion_time: None,
             next_to_send: 0,
             cumulative_acked: 0,
@@ -16,6 +17,7 @@ pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNRec
         Box::new(GoBackNReceiver {
             flow_info: fi,
             cumulative_received: 0,
+            start_time: None,
             completion_time: None,
             nack_inflight: false,
         }),
@@ -26,6 +28,7 @@ pub fn new<CC: CongAlg>(fi: FlowInfo) -> (Box<GoBackNSender<CC>>, Box<GoBackNRec
 pub struct GoBackNSender<CC: CongAlg> {
     flow_info: FlowInfo,
 
+    start_time: Option<Nanos>,
     completion_time: Option<Nanos>,
     next_to_send: u32,
     cumulative_acked: u32,
@@ -37,6 +40,7 @@ pub struct GoBackNSender<CC: CongAlg> {
 pub struct GoBackNReceiver {
     flow_info: FlowInfo,
     cumulative_received: u32,
+    start_time: Option<Nanos>,
     completion_time: Option<Nanos>,
     nack_inflight: bool,
 }
@@ -54,13 +58,17 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
             Packet::Data{..} => unreachable!(),
             Packet::Ack{..} | Packet::Nack{..} => {
                 self.retx_timeout = time;
-                self.got_ack(pkt)
+                self.got_ack(pkt, time)
             }
             Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
     }
     
     fn exec(&mut self, time: Nanos) -> Result<Vec<Packet>> {
+        if let None = self.start_time {
+            self.start_time = Some(time);
+        }
+
         if self.completion_time.is_some() {
             Ok(vec![])
         } else if !self.check_timeout(time) {
@@ -75,7 +83,7 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
 
 impl<CC: CongAlg> GoBackNSender<CC> {
     // sending side
-    fn got_ack(&mut self, ack: Packet) -> Result<Vec<Packet>> {
+    fn got_ack(&mut self, ack: Packet, time: Nanos) -> Result<Vec<Packet>> {
         match ack {
             Packet::Ack{hdr, cumulative_acked_seq} => {
                 assert_eq!(hdr.id, self.flow_info.flow_id);
@@ -90,7 +98,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                     self.cumulative_acked = cumulative_acked_seq;
                     if self.cumulative_acked == self.flow_info.length_bytes {
                         println!("flow {:?} done", self.flow_info.flow_id);
-                        self.completion_time = Some(0);
+                        self.completion_time = Some(time - self.start_time.unwrap());
                         Ok(vec![])
                     } else {
                         self.maybe_send_more()
@@ -176,9 +184,9 @@ impl Flow for GoBackNReceiver {
         self.completion_time
     }
 
-    fn receive(&mut self, _time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
         match pkt {
-            Packet::Data{..} => self.got_data(pkt),
+            Packet::Data{..} => self.got_data(pkt, time),
             Packet::Ack{..} | Packet::Nack{..} => unreachable!(),
             Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
@@ -191,7 +199,11 @@ impl Flow for GoBackNReceiver {
 
 impl GoBackNReceiver {
     // ack-ing side
-    fn got_data(&mut self, data: Packet) -> Result<Vec<Packet>> {
+    fn got_data(&mut self, data: Packet, time: Nanos) -> Result<Vec<Packet>> {
+        if let None = self.start_time {
+            self.start_time = Some(time);
+        }
+
         match data {
             Packet::Data{hdr, seq, length} => {
                 assert_eq!(hdr.id, self.flow_info.flow_id);
@@ -201,7 +213,7 @@ impl GoBackNReceiver {
                     self.cumulative_received += length;
                     self.nack_inflight = false;
                     if self.cumulative_received == self.flow_info.length_bytes {
-                        self.completion_time = Some(0); // TODO
+                        self.completion_time = Some(time - self.start_time.unwrap()); // TODO
                     }
 
                     // send ACK
