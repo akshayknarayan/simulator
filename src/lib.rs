@@ -21,7 +21,7 @@ mod tests {
     use super::event::Executor;
     use super::node::switch::{Switch, lossy_switch::LossySwitch};
     use super::packet::{Packet, PacketHeader};
-    use super::flow::{FlowArrivalEvent, FlowInfo};
+    use super::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
     use super::congcontrol::ConstCwnd;
 
     fn setup_test() -> Executor<LossySwitch> {
@@ -171,5 +171,12 @@ mod tests {
 
         let mut e = e.execute().unwrap();
         assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
+
+        for f in e.topology().all_flows().filter(|f| match f.side() {
+            FlowSide::Sender => true,
+            _ => false,
+        }) {
+            println!("Flow {:?}: {:?} ns", f.flow_info().flow_id, f.completion_time().unwrap());
+        }
     }
 }
