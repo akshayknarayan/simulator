@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate failure;
 extern crate itertools;
+#[macro_use]
+extern crate slog;
+extern crate slog_term;
 
 use failure::Error;
 type Result<T> = std::result::Result<T, Error>;
@@ -16,17 +19,28 @@ pub mod congcontrol;
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
+    use slog;
     use super::topology::{Topology, TopologyStrategy};
     use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC, OneBigSwitchNacks};
     use super::event::Executor;
     use super::node::switch::{Switch, lossy_switch::LossySwitch};
     use super::packet::{Packet, PacketHeader};
-    use super::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
+    use super::flow::{FlowArrivalEvent, FlowInfo};
     use super::congcontrol::ConstCwnd;
+
+    /// Make a standard instance of `slog::Logger`.
+    fn make_logger() -> slog::Logger {
+        use slog::Drain;
+        use slog_term;
+
+        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+        let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Info).fuse();
+        slog::Logger::root(drain, o!())
+    }
 
     fn setup_test() -> Executor<LossySwitch> {
         let t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000_000);
-        Executor::new(t)
+        Executor::new(t, None)
     }
     
     #[test]
@@ -44,7 +58,7 @@ mod tests {
                 length: 1460,
             };
 
-            let topo = e.topology();
+            let topo = e.components().1;
             topo.lookup_host(0).unwrap().push_pkt(pkt);
         }
 
@@ -84,7 +98,7 @@ mod tests {
     }
 
     fn two_flows_scenario<S: Switch>(t: Topology<S>) {
-        let mut e = Executor::new(t);
+        let mut e = Executor::new(t, None);
 
         let flow1 = FlowInfo{
             flow_id: 1,
@@ -109,7 +123,7 @@ mod tests {
         e.push(flow_arrival);
 
         let mut e = e.execute().unwrap();
-        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
+        assert!(e.components().1.all_flows().all(|f| f.completion_time().is_some()));
     }
 
     #[test]
@@ -131,7 +145,7 @@ mod tests {
     }
 
     fn victim_flow_scenario<S: Switch>(t: Topology<S>) {
-        let mut e = Executor::new(t);
+        let mut e = Executor::new(t, make_logger());
 
         let flow = FlowInfo{
             flow_id: 0,
@@ -170,13 +184,6 @@ mod tests {
         e.push(flow_arrival);
 
         let mut e = e.execute().unwrap();
-        assert!(e.topology().all_flows().all(|f| f.completion_time().is_some()));
-
-        for f in e.topology().all_flows().filter(|f| match f.side() {
-            FlowSide::Sender => true,
-            _ => false,
-        }) {
-            println!("Flow {:?}: {:?} ns", f.flow_info().flow_id, f.completion_time().unwrap());
-        }
+        assert!(e.components().1.all_flows().all(|f| f.completion_time().is_some()));
     }
 }

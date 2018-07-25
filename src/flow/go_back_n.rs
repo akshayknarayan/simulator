@@ -1,3 +1,5 @@
+use slog;
+
 use ::{Nanos, Result};
 use ::congcontrol::{CongAlg, ReductionType};
 use super::{Flow, FlowInfo, FlowSide};
@@ -53,18 +55,18 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
         self.completion_time
     }
 
-    fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         match pkt {
             Packet::Data{..} => unreachable!(),
             Packet::Ack{..} | Packet::Nack{..} => {
                 self.retx_timeout = time;
-                self.got_ack(pkt, time)
+                self.got_ack(pkt, time, logger)
             }
             Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
     }
     
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Packet>> {
+    fn exec(&mut self, time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         if let None = self.start_time {
             self.start_time = Some(time);
         }
@@ -83,7 +85,7 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
 
 impl<CC: CongAlg> GoBackNSender<CC> {
     // sending side
-    fn got_ack(&mut self, ack: Packet, time: Nanos) -> Result<Vec<Packet>> {
+    fn got_ack(&mut self, ack: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         match ack {
             Packet::Ack{hdr, cumulative_acked_seq} => {
                 assert_eq!(hdr.id, self.flow_info.flow_id);
@@ -97,8 +99,14 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                     self.cong_control.on_packet(cumulative_acked_seq - self.cumulative_acked, 0 /* rtt, Nanos */);
                     self.cumulative_acked = cumulative_acked_seq;
                     if self.cumulative_acked == self.flow_info.length_bytes {
-                        println!("flow {:?} done", self.flow_info.flow_id);
                         self.completion_time = Some(time - self.start_time.unwrap());
+                        if let Some(log) = logger {
+                            info!(log, "flow completed";
+                                "flow" => self.flow_info.flow_id,
+                                "completion_time" => self.completion_time.unwrap(),
+                            );
+                        }
+
                         Ok(vec![])
                     } else {
                         self.maybe_send_more()
@@ -184,7 +192,7 @@ impl Flow for GoBackNReceiver {
         self.completion_time
     }
 
-    fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         match pkt {
             Packet::Data{..} => self.got_data(pkt, time),
             Packet::Ack{..} | Packet::Nack{..} => unreachable!(),
@@ -192,7 +200,7 @@ impl Flow for GoBackNReceiver {
         }
     }
     
-    fn exec(&mut self, _time: Nanos) -> Result<Vec<Packet>> {
+    fn exec(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         Ok(vec![])
     }
 }

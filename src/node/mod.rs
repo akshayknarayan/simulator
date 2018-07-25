@@ -2,6 +2,8 @@ use std::vec::Vec;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
+use slog;
+
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
@@ -13,8 +15,8 @@ pub mod switch;
 /// A Node is an entity that can receive Packets.
 pub trait Node : Debug {
     fn id(&self) -> u32;
-    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
+    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
     fn reactivate(&mut self, l: Link);
     fn flow_arrival(&mut self, f: Box<Flow>);
     fn is_active(&self) -> bool;
@@ -71,7 +73,6 @@ pub struct Host {
 
 impl Host {
     pub fn push_pkt(&mut self, p: Packet) {
-        println!("pushing packet onto {:?}", self.id);
         self.to_send.push_back(p)
     }
 }
@@ -81,34 +82,50 @@ impl Node for Host {
         self.id
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>> {
-        println!("[{:?}] {:?} got pkt: {:?}", time, self.id, p);
+    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+        if let Some(log) = logger {
+            debug!(log, "got pkt";
+                "time" => time,
+                "node" => self.id,
+                "packet" => ?p,
+            );
+        }
         let active_flows = &mut self.active_flows;
         let pkts_to_send = &mut self.to_send;
         match p.clone() {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.id;
                 if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
-                    f.receive(time, p).map(|pkts| { pkts_to_send.extend(pkts); })?;
+                    f.receive(time, p, logger).map(|pkts| { pkts_to_send.extend(pkts); })?;
                     self.active = true;
-                } else {
-                    println!("got isolated packet {:?}", p);
+                } else if let Some(log) = logger {
+                    warn!(log, "got isolated packet";
+                        "packet" => ?p,
+                    );
                 }
             }
             Packet::Pause(_) => {
                 self.paused = true;
-                println!("{:?} paused", self.id);
+                if let Some(log) = logger {
+                    debug!(log, "pausing";
+                        "node" => self.id,
+                    );
+                }
             }
             Packet::Resume(_) => {
                 self.paused = false;
-                println!("{:?} resume", self.id);
+                if let Some(log) = logger {
+                    debug!(log, "resuming";
+                        "node" => self.id,
+                    );
+                }
             }
         }
 
         Ok(vec![])
     }
 
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>> {
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
         let flows = &mut self.active_flows;
         let active = &mut self.active;
         let link = self.link;
@@ -118,14 +135,21 @@ impl Node for Host {
             return Ok(vec![]);
         }
 
-        let new_pkts = flows.iter_mut().flat_map(|f| f.exec(time).unwrap().into_iter());
+        let new_pkts = flows.iter_mut().flat_map(|f| f.exec(time, logger).unwrap().into_iter());
         let pkts = &mut self.to_send;
         pkts.extend(new_pkts);
         *active = false;
         pkts.pop_front().map_or_else(|| {
             Err(format_err!("no more pending outgoing packets"))
         }, |pkt| {
-            println!("[{:?}] {:?} transmitted {:?}", time, id, pkt);
+            if let Some(log) = logger {
+                debug!(log, "transmitted packet";
+                    "time" => time,
+                    "node" => id,
+                    "packet" => ?pkt,
+                );
+            }
+
             Ok(vec![Box::new(NodeTransmitEvent(link, pkt)) as Box<Event>])
         })
     }
@@ -157,8 +181,8 @@ impl Event for LinkTransmitEvent {
         vec![self.0.to]
     }
 
-    fn exec<'a>(&mut self, time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
-        nodes[0].receive(self.1.clone(), time)
+    fn exec(&mut self, time: Nanos, nodes: &mut [&mut Node], logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+        nodes[0].receive(self.1.clone(), time, logger)
     }
 }
 
@@ -178,11 +202,8 @@ impl Event for NodeTransmitEvent {
         vec![self.0.from]
     }
 
-    fn exec<'a>(&mut self, _time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
-        //topo.lookup_node(from).map(|tn| {
-            nodes[0].reactivate(self.0);
-        //})
-        //.unwrap_or_else(|_| ()); // throw away failure (not host)
+    fn exec(&mut self, _time: Nanos, nodes: &mut [&mut Node], _logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+        nodes[0].reactivate(self.0);
         Ok(vec![
             Box::new(
                 LinkTransmitEvent(self.0, self.1)

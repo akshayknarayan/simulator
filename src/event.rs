@@ -2,6 +2,8 @@ use std::cmp::Ordering;
 use std::boxed::Box;
 use std::collections::BinaryHeap;
 
+use slog;
+
 use super::{Nanos, Result};
 use super::topology::Topology;
 use super::node::Node;
@@ -21,7 +23,7 @@ pub enum EventTime {
 pub trait Event {
     fn time(&self) -> EventTime; // when this should trigger
     fn affected_node_ids(&self) -> Vec<u32>;
-    fn exec<'a>(&mut self, time: Nanos, affected_nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>>; // execute the event
+    fn exec(&mut self, time: Nanos, affected_nodes: &mut [&mut Node], logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>; // execute the event
 }
 
 struct EventContainer(Box<Event>, Nanos);
@@ -61,19 +63,21 @@ pub struct Executor<S: Switch> {
     events: BinaryHeap<EventContainer>,
     current_time: Nanos,
     topology: Topology<S>,
+    logger: Option<slog::Logger>,
 }
 
 impl<S: Switch> Executor<S> {
-    pub fn new(topology: Topology<S>) -> Self {
+    pub fn new(topology: Topology<S>, logger: impl Into<Option<slog::Logger>>) -> Self {
         Executor{
             events: BinaryHeap::new(),
             current_time: 0,
             topology,
+            logger: logger.into(),
         }
     }
 
-    pub fn topology(&mut self) -> &mut Topology<S> {
-        &mut self.topology
+    pub fn components(&mut self) -> (Nanos, &mut Topology<S>, Option<&slog::Logger>) {
+        (self.current_time, &mut self.topology, self.logger.as_ref())
     }
 
     pub fn push(&mut self, ev: Box<Event>) {
@@ -84,11 +88,12 @@ impl<S: Switch> Executor<S> {
         // advancing time
         // first, poll all active nodes
         let events_heap = &mut self.events;
+        let logger = self.logger.as_ref();
         let now = self.current_time;
         let top = &mut self.topology;
         top
             .active_nodes()
-            .filter_map(|n| n.exec(now).ok())
+            .filter_map(|n| n.exec(now, logger).ok())
             .flat_map(|i| i)
             .for_each(|new_ev| push_onto(now, new_ev, events_heap))
     }
@@ -115,7 +120,7 @@ impl<S: Switch> Executor<S> {
                     let mut ev = evc.0;
                     let new_evs = {
                         let nds = &mut self.topology.lookup_nodes(&ev.affected_node_ids())?;
-                        ev.exec(self.current_time, nds)?
+                        ev.exec(self.current_time, nds, self.logger.as_ref())?
                     };
                     for new_ev in new_evs {
                         self.push(new_ev);
@@ -124,7 +129,12 @@ impl<S: Switch> Executor<S> {
                 None => {
                     self.poll_nodes(); // try to poll nodes one last time
                     if self.events.is_empty() {
-                        println!("[{:?}] exiting", self.current_time);
+                        if let Some(ref log) = self.logger {
+                            info!(log, "exiting";
+                                "time" => self.current_time,
+                            );
+                        }
+
                         return Ok(self);
                     }
                 }

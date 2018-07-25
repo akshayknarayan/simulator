@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use slog;
 use super::{Nanos, Result};
 use super::packet::Packet;
 use super::event::{Event, EventTime};
@@ -17,7 +18,7 @@ impl<CC: CongAlg> Event for FlowArrivalEvent<CC> {
         vec![self.0.sender_id, self.0.dest_id]
     }
 
-    fn exec<'a>(&mut self, _time: Nanos, nodes: &mut [&mut Node]) -> Result<Vec<Box<Event>>> {
+    fn exec(&mut self, _time: Nanos, nodes: &mut [&mut Node], _logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
         let (f_send, f_recv) = go_back_n::new::<CC>(self.0);
         nodes[0].flow_arrival(f_send);
         nodes[1].flow_arrival(f_recv);
@@ -47,9 +48,9 @@ pub trait Flow: Debug {
 
     /// Process an incoming packet
     /// Return reaction outgoing packets.
-    fn receive(&mut self, time: Nanos, pkt: Packet) -> Result<Vec<Packet>>;
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>>;
     /// Return proactive outgoing packets.
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Packet>>;
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>>;
 }
 
 pub mod go_back_n;

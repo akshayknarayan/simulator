@@ -1,5 +1,7 @@
 use std::vec::Vec;
 
+use slog;
+
 use ::{Nanos, Result};
 use event::Event;
 use node::{NodeTransmitEvent, Link};
@@ -15,10 +17,15 @@ pub struct PFCSwitch {
 }
 
 impl PFCSwitch {
-    fn pause_incoming(&mut self) {
+    fn pause_incoming(&mut self, logger: Option<&slog::Logger>) {
         let id = self.id;
         // send pauses to upstream queues
-        println!("{:?} pausing", id);
+        if let Some(log) = logger {
+            debug!(log, "pausing";
+               "node" => self.id,
+            );
+        }
+
         self.rack
             .iter_mut()
             .chain(self.core.iter_mut())
@@ -38,10 +45,14 @@ impl PFCSwitch {
         });
     }
 
-    fn resume_incoming(&mut self) {
+    fn resume_incoming(&mut self, logger: Option<&slog::Logger>) {
         let id = self.id;
-                
-        println!("{:?} resuming", id);
+        if let Some(log) = logger {
+            debug!(log, "resuming";
+                "node" => self.id,
+            );
+        }
+
         self.rack
             .iter_mut()
             .chain(self.core.iter_mut())
@@ -68,10 +79,17 @@ impl Switch for PFCSwitch {
         self.id
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>> {
+    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
         self.active = true;
         let id = self.id;
-        println!("[{:?}] {:?} got pkt: {:?}", time, self.id, p);
+        if let Some(log) = logger {
+            debug!(log, "got pkt";
+                "time" => time,
+                "node" => self.id,
+                "packet" => ?p,
+            );
+        }
+
         // switches are output queued
         match p {
             Packet::Pause(from) => {
@@ -114,7 +132,14 @@ impl Switch for PFCSwitch {
 						// send packet out on rack_link_queue
 						if let None = rack_link_queue.enqueue(p) {
                             // packet was dropped
-                            println!("{:?} dropping pkt: {:?}", id, p);
+                            if let Some(log) = logger {
+                                debug!(log, "dropping";
+                                    "time" => time,
+                                    "node" => id,
+                                    "packet" => ?p,
+                                );
+                            }
+
                             return;
                         }
 
@@ -128,7 +153,7 @@ impl Switch for PFCSwitch {
 					});
                 
                 if should_pause {
-                    self.pause_incoming();
+                    self.pause_incoming(logger);
                 }
 
                 Ok(vec![])
@@ -136,7 +161,7 @@ impl Switch for PFCSwitch {
         }
     }
 
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>> {
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
         // step all queues forward
         let mut should_resume = false;
         let id = self.id;
@@ -155,7 +180,14 @@ impl Switch for PFCSwitch {
                         should_resume = true;
                     }
 
-                    println!("[{:?}] {:?} transmitted {:?}", time, id, pkt);
+                    if let Some(log) = logger {
+                        debug!(log, "transmitted packet";
+                            "time" => time,
+                            "node" => id,
+                            "packet" => ?pkt,
+                        );
+                    }
+
                     Some(
                         Box::new(
                             NodeTransmitEvent(q.link(), pkt)
@@ -168,7 +200,7 @@ impl Switch for PFCSwitch {
             .collect::<Vec<Box<Event>>>();
 
         if should_resume {
-            self.resume_incoming();
+            self.resume_incoming(logger);
         }
 
         Ok(evs)

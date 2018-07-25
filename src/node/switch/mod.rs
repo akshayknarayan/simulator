@@ -1,6 +1,8 @@
 use std::vec::Vec;
 use std::fmt::Debug;
 
+use slog;
+
 use ::{Nanos, Result};
 use event::Event;
 use node::{Node, Link};
@@ -29,8 +31,8 @@ pub trait Switch: Debug {
         links: impl Iterator<Item=Box<Queue>>,
     ) -> Self;
     fn id(&self) -> u32;
-    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>>;
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>>;
+    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
     fn reactivate(&mut self, l: Link);
     fn is_active(&self) -> bool;
 }
@@ -40,12 +42,12 @@ impl<S: Switch> Node for S {
         self.id()
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos) -> Result<Vec<Box<Event>>> {
-        self.receive(p, time)
+    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+        self.receive(p, time, logger)
     }
 
-    fn exec(&mut self, time: Nanos) -> Result<Vec<Box<Event>>> {
-        self.exec(time)
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+        self.exec(time, logger)
     }
 
     fn reactivate(&mut self, l: Link) {

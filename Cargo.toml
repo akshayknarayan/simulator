@@ -6,3 +6,5 @@ authors = ["Akshay Narayan <akshayn@mit.edu>"]
 [dependencies]
 failure = "0.1.1"
 itertools = "0.7.8"
+slog = "2"
+slog-term = "2"
