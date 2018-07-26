@@ -69,6 +69,14 @@ impl Queue for DropTailQueue {
 
         self.pkts.pop_front()
     }
+
+    fn discard_matching(&mut self, mut should_discard: Box<FnMut(Packet) -> bool>) -> usize {
+        let pkts = &mut self.pkts;
+        let after_pkts = pkts.iter().filter(|&&p| !should_discard(p)).map(|p| p.clone()).collect::<VecDeque<Packet>>();
+        let dropped = pkts.len() - after_pkts.len();
+        *pkts = after_pkts;
+        dropped
+    }
     
     fn peek(&self) -> Option<&Packet> {
         self.pkts.front()
@@ -88,5 +96,47 @@ impl Queue for DropTailQueue {
 
     fn set_paused(&mut self, a: bool) {
         self.paused = a;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use node::{Link, switch::Queue};
+    use packet::{Packet, PacketHeader};
+    use super::DropTailQueue;
+
+    #[test]
+    fn check_discard_matching() {
+        let mut q = DropTailQueue::new(15_000, Link{propagation_delay: 0, bandwidth_bps: 0, pfc_enabled: false, from: 0, to: 1});
+        let mut pkts = (0..).map(|seq| {
+            Packet::Data{
+                hdr: PacketHeader{
+                    id: 0,
+                    from: 0,
+                    to: 1,
+                },
+                seq,
+                length: 1460,
+            }
+        });
+
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        q.enqueue(pkts.next().unwrap()).unwrap();
+        assert_eq!(q.headroom(), 1500 * 2);
+
+        let dropped = q.discard_matching(Box::new(|p| match p {
+            Packet::Data{seq, ..} => {
+                seq > 5
+            }
+            _ => unreachable!(),
+        }));
+        assert_eq!(dropped, 2);
+        assert_eq!(q.headroom(), 1500 * 4);
     }
 }

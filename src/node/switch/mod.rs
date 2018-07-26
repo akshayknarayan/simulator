@@ -15,6 +15,7 @@ pub trait Queue : Debug {
     fn enqueue(&mut self, p: Packet) -> Option<()>;
     fn force_tx_next(&mut self, p: Packet) -> Option<()>;
     fn dequeue(&mut self) -> Option<Packet>;
+    fn discard_matching(&mut self, Box<FnMut(Packet) -> bool>) -> usize;
     fn peek(&self) -> Option<&Packet>;
     fn headroom(&self) -> u32;
     fn is_active(&self) -> bool;
