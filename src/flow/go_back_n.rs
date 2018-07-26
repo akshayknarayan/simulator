@@ -116,9 +116,8 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                         self.maybe_send_more()
                     }
                 } else {
-                    self.cong_control.reduction(ReductionType::Drop);
-                    let cumulative_acked = self.cumulative_acked;
-                    self.go_back_n(cumulative_acked)
+                    // old ACK, ignore
+                    Ok(vec![])
                 }
             }
             Packet::Nack{hdr, nacked_seq} => {
