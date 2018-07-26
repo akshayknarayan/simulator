@@ -84,7 +84,7 @@ impl Node for Host {
 
     fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
         if let Some(log) = logger {
-            debug!(log, "got pkt";
+            debug!(log, "rx";
                 "time" => time,
                 "node" => self.id,
                 "packet" => ?p,
@@ -143,7 +143,7 @@ impl Node for Host {
             Err(format_err!("no more pending outgoing packets"))
         }, |pkt| {
             if let Some(log) = logger {
-                debug!(log, "transmitted packet";
+                debug!(log, "tx";
                     "time" => time,
                     "node" => id,
                     "packet" => ?pkt,

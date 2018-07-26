@@ -40,7 +40,7 @@ impl Switch for NackSwitch {
         self.active = true;
         let id = self.id;
         if let Some(log) = logger {
-            debug!(log, "got pkt";
+            debug!(log, "rx";
                 "time" => time,
                 "node" => self.id,
                 "packet" => ?p,
@@ -157,7 +157,7 @@ impl Switch for NackSwitch {
                 q.set_active(false);
                 if let Some(pkt) = q.dequeue() {
                     if let Some(log) = logger {
-                        debug!(log, "transmitted";
+                        debug!(log, "tx";
                             "time" => time,
                             "node" => id,
                             "packet" => ?pkt,

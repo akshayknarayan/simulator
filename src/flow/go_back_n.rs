@@ -103,7 +103,11 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                         if let Some(log) = logger {
                             info!(log, "flow completed";
                                 "flow" => self.flow_info.flow_id,
+                                "node" => self.flow_info.sender_id,
+                                "side" => ?self.side(),
                                 "completion_time" => self.completion_time.unwrap(),
+                                "start_time" => self.start_time.unwrap(),
+                                "end_time" => time,
                             );
                         }
 
@@ -192,9 +196,9 @@ impl Flow for GoBackNReceiver {
         self.completion_time
     }
 
-    fn receive(&mut self, time: Nanos, pkt: Packet, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         match pkt {
-            Packet::Data{..} => self.got_data(pkt, time),
+            Packet::Data{..} => self.got_data(pkt, time, logger),
             Packet::Ack{..} | Packet::Nack{..} => unreachable!(),
             Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
@@ -207,7 +211,7 @@ impl Flow for GoBackNReceiver {
 
 impl GoBackNReceiver {
     // ack-ing side
-    fn got_data(&mut self, data: Packet, time: Nanos) -> Result<Vec<Packet>> {
+    fn got_data(&mut self, data: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         if let None = self.start_time {
             self.start_time = Some(time);
         }
@@ -221,7 +225,17 @@ impl GoBackNReceiver {
                     self.cumulative_received += length;
                     self.nack_inflight = false;
                     if self.cumulative_received == self.flow_info.length_bytes {
-                        self.completion_time = Some(time - self.start_time.unwrap()); // TODO
+                        self.completion_time = Some(time - self.start_time.unwrap());
+                        if let Some(log) = logger {
+                            info!(log, "flow completed";
+                                "flow" => self.flow_info.flow_id,
+                                "node" => self.flow_info.dest_id,
+                                "side" => ?self.side(),
+                                "completion_time" => self.completion_time.unwrap(),
+                                "start_time" => self.start_time.unwrap(),
+                                "end_time" => time,
+                            );
+                        }
                     }
 
                     // send ACK

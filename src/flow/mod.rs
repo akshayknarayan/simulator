@@ -35,6 +35,7 @@ pub struct FlowInfo {
     pub max_packet_length: u32,
 }
 
+#[derive(Clone,Copy,Debug)]
 pub enum FlowSide{
     Sender,
     Receiver,

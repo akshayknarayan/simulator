@@ -34,7 +34,7 @@ mod tests {
         use slog_term;
 
         let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Info).fuse();
+        let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
         slog::Logger::root(drain, o!())
     }
 
