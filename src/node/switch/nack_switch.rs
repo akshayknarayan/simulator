@@ -82,6 +82,14 @@ impl Switch for NackSwitch {
                         progress_flow = true;
                     } else {
                         // this packet is going to be retransmitted anyway. drop it
+                        if let Some(log) = logger {
+                            debug!(log, "dropping";
+                                "time" => time,
+                                "node" => id,
+                                "packet" => ?p,
+                            );
+                        }
+
                         return Ok(vec![]);
                     }
                 }
@@ -100,18 +108,28 @@ impl Switch for NackSwitch {
 					.map_or_else(|| unimplemented!(), |rack_link_queue| {
 						// send packet out on rack_link_queue
 						if let None = rack_link_queue.enqueue(p) {
-                            // packet was dropped
+                            // add this packet to the list of dropped flows
+                            let flow_id_to_drop = hdr.id;
+                            let dropped_seq = seq;
+                            blocked.insert(flow_id_to_drop, seq);
+                            // remove all packets from this flow from this queue
+                            let dropped = rack_link_queue.discard_matching(Box::new(move |p| {
+                                match p {
+                                    Packet::Data{hdr, seq, ..} => {
+                                        hdr.id == flow_id_to_drop && seq > dropped_seq
+                                    }
+                                    _ => false,
+                                }
+                            }));
+                            
                             if let Some(log) = logger {
                                 debug!(log, "dropping";
                                     "time" => time,
                                     "node" => id,
                                     "packet" => ?p,
+                                    "from_flow" => dropped,
                                 );
                             }
-
-                            // add this packet to the list of dropped flows
-                            blocked.insert(hdr.id, seq);
-                            // TODO remove all packets from this flow from this queue
                             
                             // send NACK back to source
                             Some(Packet::Nack{
