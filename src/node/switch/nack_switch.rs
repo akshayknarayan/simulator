@@ -77,13 +77,13 @@ impl Switch for NackSwitch {
             }
             Packet::Data{hdr, seq, ..} => {
                 let mut progress_flow = false;
-                if let Some(next_expected_seq) = self.blocked_flows.get(&hdr.id) {
+                if let Some(next_expected_seq) = self.blocked_flows.get(&hdr.flow) {
                     if seq == *next_expected_seq {
                         progress_flow = true;
                     } else {
                         // this packet is going to be retransmitted anyway. drop it
                         if let Some(log) = logger {
-                            debug!(log, "dropping";
+                            debug!(log, "pre-dropping";
                                 "time" => time,
                                 "node" => id,
                                 "packet" => ?p,
@@ -95,7 +95,7 @@ impl Switch for NackSwitch {
                 }
 
                 if progress_flow {
-                    self.blocked_flows.remove(&hdr.id);
+                    self.blocked_flows.remove(&hdr.flow);
                 }
 
                 let blocked = &mut self.blocked_flows;
@@ -109,14 +109,14 @@ impl Switch for NackSwitch {
 						// send packet out on rack_link_queue
 						if let None = rack_link_queue.enqueue(p) {
                             // add this packet to the list of dropped flows
-                            let flow_id_to_drop = hdr.id;
+                            let flow_id_to_drop = hdr.flow;
                             let dropped_seq = seq;
                             blocked.insert(flow_id_to_drop, seq);
                             // remove all packets from this flow from this queue
                             let dropped = rack_link_queue.discard_matching(Box::new(move |p| {
                                 match p {
                                     Packet::Data{hdr, seq, ..} => {
-                                        hdr.id == flow_id_to_drop && seq > dropped_seq
+                                        hdr.flow == flow_id_to_drop && seq > dropped_seq
                                     }
                                     _ => false,
                                 }
@@ -134,7 +134,7 @@ impl Switch for NackSwitch {
                             // send NACK back to source
                             Some(Packet::Nack{
                                 hdr: PacketHeader{
-                                    id: hdr.id,
+                                    flow: hdr.flow,
                                     from: hdr.to,
                                     to: hdr.from,
                                 },

@@ -94,7 +94,7 @@ impl Node for Host {
         let pkts_to_send = &mut self.to_send;
         match p.clone() {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
-                let flow_id = hdr.id;
+                let flow_id = hdr.flow;
                 if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
                     f.receive(time, p, logger).map(|pkts| { pkts_to_send.extend(pkts); })?;
                     self.active = true;

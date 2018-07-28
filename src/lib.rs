@@ -3,6 +3,7 @@ extern crate failure;
 extern crate itertools;
 #[macro_use]
 extern crate slog;
+extern crate slog_bunyan;
 extern crate slog_term;
 
 use failure::Error;
@@ -30,11 +31,14 @@ mod tests {
 
     /// Make a standard instance of `slog::Logger`.
     fn make_logger() -> slog::Logger {
+        use std::sync::Mutex;
         use slog::Drain;
+        use slog_bunyan;
         use slog_term;
 
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
+        //let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+        //let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
+        let drain = Mutex::new(slog_bunyan::default(slog_term::TestStdoutWriter)).fuse();
         slog::Logger::root(drain, o!())
     }
 
@@ -50,7 +54,7 @@ mod tests {
         {
             let pkt = Packet::Data{
                 hdr: PacketHeader{
-                    id: 0,
+                    flow: 0,
                     from: 0,
                     to: 1,
                 },

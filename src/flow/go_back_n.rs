@@ -88,7 +88,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
     fn got_ack(&mut self, ack: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
         match ack {
             Packet::Ack{hdr, cumulative_acked_seq} => {
-                assert_eq!(hdr.id, self.flow_info.flow_id);
+                assert_eq!(hdr.flow, self.flow_info.flow_id);
                 assert_eq!(hdr.from, self.flow_info.dest_id);
                 assert_eq!(hdr.to, self.flow_info.sender_id);
 
@@ -121,7 +121,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                 }
             }
             Packet::Nack{hdr, nacked_seq} => {
-                assert_eq!(hdr.id, self.flow_info.flow_id);
+                assert_eq!(hdr.flow, self.flow_info.flow_id);
                 assert_eq!(hdr.from, self.flow_info.dest_id);
                 assert_eq!(hdr.to, self.flow_info.sender_id);
                 self.cong_control.reduction(ReductionType::Drop);
@@ -146,7 +146,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                     // send a full size packet and continue
                     let pkt = Packet::Data{
                         hdr: PacketHeader{
-                            id: self.flow_info.flow_id,
+                            flow: self.flow_info.flow_id,
                             from: self.flow_info.sender_id,
                             to: self.flow_info.dest_id,
                         },
@@ -159,7 +159,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                 } else if self.next_to_send < self.flow_info.length_bytes {
                     let pkt = Packet::Data{
                         hdr: PacketHeader{
-                            id: self.flow_info.flow_id,
+                            flow: self.flow_info.flow_id,
                             from: self.flow_info.sender_id,
                             to: self.flow_info.dest_id,
                         },
@@ -217,7 +217,7 @@ impl GoBackNReceiver {
 
         match data {
             Packet::Data{hdr, seq, length} => {
-                assert_eq!(hdr.id, self.flow_info.flow_id);
+                assert_eq!(hdr.flow, self.flow_info.flow_id);
                 assert_eq!(hdr.to, self.flow_info.dest_id);
                 assert_eq!(hdr.from, self.flow_info.sender_id);
                 if seq == self.cumulative_received {
@@ -240,7 +240,7 @@ impl GoBackNReceiver {
                     // send ACK
                     Ok(vec![Packet::Ack{
                         hdr: PacketHeader{
-                            id: hdr.id,
+                            flow: hdr.flow,
                             from: hdr.to,
                             to: hdr.from,
                         },
@@ -253,7 +253,7 @@ impl GoBackNReceiver {
                         self.nack_inflight = true;
                         Ok(vec![Packet::Nack{
                             hdr: PacketHeader{
-                                id: hdr.id,
+                                flow: hdr.flow,
                                 from: hdr.to,
                                 to: hdr.from,
                             },

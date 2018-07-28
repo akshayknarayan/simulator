@@ -111,7 +111,7 @@ mod tests {
         let mut pkts = (0..).map(|seq| {
             Packet::Data{
                 hdr: PacketHeader{
-                    id: 0,
+                    flow: 0,
                     from: 0,
                     to: 1,
                 },
