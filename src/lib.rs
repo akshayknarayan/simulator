@@ -30,25 +30,22 @@ mod tests {
     use super::congcontrol::ConstCwnd;
 
     /// Make a standard instance of `slog::Logger`.
-    fn make_logger() -> slog::Logger {
+    fn make_logger(logfile: Option<&str>) -> slog::Logger {
         use std::sync::Mutex;
+        use std::fs::File;
         use slog::Drain;
         use slog_bunyan;
         use slog_term;
 
-        //let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        //let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
-        let drain = Mutex::new(slog_bunyan::default(slog_term::TestStdoutWriter)).fuse();
-        slog::Logger::root(drain, o!())
-    }
-
-    fn make_logger_for_humans() -> slog::Logger {
-        use slog::Drain;
-        use slog_term;
-
-        let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
-        let drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
-        slog::Logger::root(drain, o!())
+        if let Some(fln) = logfile {
+            let f = File::create(fln).unwrap();
+            let json_drain = Mutex::new(slog_bunyan::default(f)).fuse();
+            slog::Logger::root(json_drain, o!())
+        } else {
+            let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+            let human_drain = slog_term::FullFormat::new(decorator).build().filter_level(slog::Level::Debug).fuse();
+            slog::Logger::root(human_drain, o!())
+        }
     }
 
     fn setup_test() -> Executor<LossySwitch> {
@@ -131,8 +128,15 @@ mod tests {
                 self.id
             }
 
-            fn receive(&mut self, p: Packet, _time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+            fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
                 self.active = true;
+                if let Some(log) = logger {
+                    debug!(log, "rx";
+                        "time" => time,
+                        "node" => self.id,
+                        "packet" => ?p,
+                    );
+                }
                 
                 match p {
                     Packet::Pause(_) | Packet::Resume(_) => Ok(vec![]),
@@ -196,7 +200,8 @@ mod tests {
                 }
             }
 
-            fn exec(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+            fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+                let id = self.id;
                 // step all queues forward
                 let evs = self.rack.iter_mut()
                     .filter(|q| {
@@ -205,6 +210,14 @@ mod tests {
                     .filter_map(|q| {
                         q.set_active(false);
                         if let Some(pkt) = q.dequeue() {
+                            if let Some(log) = logger {
+                                debug!(log, "tx";
+                                    "time" => time,
+                                    "node" => id,
+                                    "packet" => ?pkt,
+                                );
+                            }
+
                             Some(
                                 Box::new(
                                     NodeTransmitEvent(q.link(), pkt)
@@ -239,7 +252,7 @@ mod tests {
     #[test]
     fn one_flow_with_nack() {
         let t = OneBigSwitch::<nack_test_switch::NackTestSwitch>::make_topology(2, 15_000, 1_000_000, 1_000_000);
-        let mut e = Executor::new(t, make_logger_for_humans());
+        let mut e = Executor::new(t, make_logger(Some("oneflow_nack.tr")));
 
         let flowinfo = FlowInfo{
             flow_id: 1,
@@ -334,7 +347,7 @@ mod tests {
     }
 
     fn victim_flow_scenario<S: Switch>(t: Topology<S>) {
-        let mut e = Executor::new(t, make_logger());
+        let mut e = Executor::new(t, make_logger(None));
 
         let flow = FlowInfo{
             flow_id: 0,

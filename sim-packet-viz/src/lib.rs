@@ -175,14 +175,14 @@ pub struct TikzWriter<W: std::io::Write> {
 fn x_coord_from_node(node: usize) -> Option<usize> {
     match node {
         0 => Some(0),
-        2 => Some(10),
-        4 => Some(5),
+        1 => Some(10),
+        2 => Some(5),
         _ => None,
     }
 }
 
 fn node_x_coords() -> impl Iterator<Item=usize> {
-    vec![0,2,4].into_iter()
+    vec![0,2,1].into_iter()
 }
 
 impl<W: std::io::Write> TikzWriter<W> {
@@ -280,7 +280,7 @@ impl<W: std::io::Write> VizWriter for TikzWriter<W> {
                             None => bail!("Found unmatched tx: {:?}", ev.annotation()),
                         }
                     } else {
-                        bail!("Found unmatched rx");
+                        bail!("Found unmatched rx: {:?}", ev.annotation());
                     }
                 }
                 _ => continue,
