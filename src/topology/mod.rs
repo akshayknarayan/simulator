@@ -10,7 +10,7 @@ pub trait TopologyStrategy<S: Switch> {
     fn make_topology(
         num_hosts: u32, 
         queue_length_bytes: u32,
-        access_link_bandwidth: u64, 
+        access_link_bandwidth_bps: u64, 
         per_link_propagation_delay: Nanos,
     ) -> Topology<S>;
 }
@@ -110,14 +110,16 @@ fn merge_by_indices<'a>(
 mod tests {
     use super::TopologyStrategy;
     use super::one_big_switch::OneBigSwitch;
+    use node::switch::lossy_switch::LossySwitch;
+
     #[test]
     fn make() {
-        let _t = OneBigSwitch::make_topology(2, 15_000, 1_000_000, 1_000);
+        let _t = OneBigSwitch::<LossySwitch>::make_topology(2, 15_000, 1_000_000, 1_000);
     }
 
     #[test]
     fn lookup_node() {
-        let mut t = OneBigSwitch::make_topology(5, 15_000, 1_000_000, 1_000);
+        let mut t = OneBigSwitch::<LossySwitch>::make_topology(5, 15_000, 1_000_000, 1_000);
         let nodes = t.lookup_nodes(&[2,4,5]).unwrap();
         assert_eq!(nodes.len(), 3);
         assert_eq!(nodes[0].id(), 2);
@@ -127,7 +129,7 @@ mod tests {
 
     #[test]
     fn lookup_nonexistent_node() {
-        let mut t = OneBigSwitch::make_topology(5, 15_000, 1_000_000, 1_000);
+        let mut t = OneBigSwitch::<LossySwitch>::make_topology(5, 15_000, 1_000_000, 1_000);
         t.lookup_nodes(&[1, 3, 6]).unwrap_err();
     }
 }
