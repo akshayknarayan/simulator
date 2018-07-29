@@ -1,0 +1,10 @@
+[package]
+name = "viz"
+version = "0.1.0"
+authors = ["Akshay Narayan <akshayn@mit.edu>"]
+
+[dependencies]
+failure = "0.1.1"
+lazy_static = "1.0.2"
+regex = "1"
+json = "*"
