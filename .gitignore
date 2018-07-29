@@ -2,3 +2,8 @@
 **/*.rs.bk
 Cargo.lock
 *.rustfmt
+*.tex
+*.aux
+*.log
+*.tr
+*.pdf
