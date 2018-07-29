@@ -55,7 +55,7 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
         self.completion_time
     }
 
-    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
         match pkt {
             Packet::Data{..} => unreachable!(),
             Packet::Ack{..} | Packet::Nack{..} => {
@@ -66,26 +66,26 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
         }
     }
     
-    fn exec(&mut self, time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
+    fn exec(&mut self, time: Nanos, _logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
         if let None = self.start_time {
             self.start_time = Some(time);
         }
 
         if self.completion_time.is_some() {
-            Ok(vec![])
+            Ok((vec![], false))
         } else if !self.check_timeout(time) {
-            self.maybe_send_more()
+            self.maybe_send_more().map(|v| (v, false))
         } else {
             let cum_ack = self.cumulative_acked;
             self.retx_timeout = time;
-            self.go_back_n(cum_ack)
+            self.go_back_n(cum_ack).map(|v| (v, true))
         }
     }
 }
 
 impl<CC: CongAlg> GoBackNSender<CC> {
     // sending side
-    fn got_ack(&mut self, ack: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
+    fn got_ack(&mut self, ack: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
         match ack {
             Packet::Ack{hdr, cumulative_acked_seq} => {
                 assert_eq!(hdr.flow, self.flow_info.flow_id);
@@ -111,13 +111,13 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                             );
                         }
 
-                        Ok(vec![])
+                        Ok((vec![], false))
                     } else {
-                        self.maybe_send_more()
+                        self.maybe_send_more().map(|v| (v, false))
                     }
                 } else {
                     // old ACK, ignore
-                    Ok(vec![])
+                    Ok((vec![], false))
                 }
             }
             Packet::Nack{hdr, nacked_seq} => {
@@ -125,7 +125,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                 assert_eq!(hdr.from, self.flow_info.dest_id);
                 assert_eq!(hdr.to, self.flow_info.sender_id);
                 self.cong_control.reduction(ReductionType::Drop);
-                self.go_back_n(nacked_seq)
+                self.go_back_n(nacked_seq).map(|v| (v, true))
             }
             Packet::Data{..} | Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
@@ -195,16 +195,16 @@ impl Flow for GoBackNReceiver {
         self.completion_time
     }
 
-    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
         match pkt {
-            Packet::Data{..} => self.got_data(pkt, time, logger),
+            Packet::Data{..} => self.got_data(pkt, time, logger).map(|v| (v, false)),
             Packet::Ack{..} | Packet::Nack{..} => unreachable!(),
             Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
         }
     }
     
-    fn exec(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) -> Result<Vec<Packet>> {
-        Ok(vec![])
+    fn exec(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
+        Ok((vec![], false))
     }
 }
 

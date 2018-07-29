@@ -49,9 +49,9 @@ pub trait Flow: Debug {
 
     /// Process an incoming packet
     /// Return reaction outgoing packets.
-    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<Vec<Packet>>;
+    fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)>;
     /// Return proactive outgoing packets.
-    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Packet>>;
+    fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)>;
 }
 
 pub mod go_back_n;

@@ -96,7 +96,16 @@ impl Node for Host {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.flow;
                 if let Some(f) = active_flows.iter_mut().find(|f| f.flow_info().flow_id == flow_id) {
-                    f.receive(time, p, logger).map(|pkts| { pkts_to_send.extend(pkts); })?;
+                    f.receive(time, p, logger).map(|(pkts, should_clear)| { 
+                        if should_clear {
+                            pkts_to_send.retain(|p| match p {
+                                Packet::Data{hdr, ..} => hdr.flow != flow_id,
+                                _ => true,
+                            })
+                        }
+
+                        pkts_to_send.extend(pkts); 
+                    })?;
                     self.active = true;
                 } else if let Some(log) = logger {
                     warn!(log, "got isolated packet";
@@ -135,8 +144,23 @@ impl Node for Host {
             return Ok(vec![]);
         }
 
-        let new_pkts = flows.iter_mut().flat_map(|f| f.exec(time, logger).unwrap().into_iter());
         let pkts = &mut self.to_send;
+        let (new_pkts, flows_to_clear): (Vec<_>, Vec<_>) = flows.iter_mut()
+            .map(|f| {
+                let (ps, should_clear) = f.exec(time, logger).unwrap();
+                (ps, (f.flow_info().flow_id, should_clear))
+            })
+            .unzip();
+        for fid in flows_to_clear.into_iter()
+            .filter(|(_, clr)| *clr)
+            .map(|(f, _)| f) {
+            pkts.retain(|p| match p {
+                Packet::Data{hdr, ..} => hdr.flow != fid,
+                _ => true,
+            })
+        }
+
+        let new_pkts = new_pkts.into_iter().flat_map(|ps| ps);
         pkts.extend(new_pkts);
         *active = false;
         pkts.pop_front().map_or_else(|| {
@@ -170,7 +194,7 @@ impl Node for Host {
 }
 
 #[derive(Debug)]
-pub struct LinkTransmitEvent(Link, Packet);
+pub struct LinkTransmitEvent(pub Link, pub Packet);
 
 impl Event for LinkTransmitEvent {
     fn time(&self) -> EventTime {
@@ -187,7 +211,7 @@ impl Event for LinkTransmitEvent {
 }
 
 #[derive(Debug)]
-pub struct NodeTransmitEvent(Link, Packet);
+pub struct NodeTransmitEvent(pub Link, pub Packet);
 
 impl Event for NodeTransmitEvent {
     fn time(&self) -> EventTime {
