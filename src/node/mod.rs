@@ -92,6 +92,7 @@ impl Node for Host {
         }
         let active_flows = &mut self.active_flows;
         let pkts_to_send = &mut self.to_send;
+        let was_empty = pkts_to_send.is_empty();
         match p.clone() {
             Packet::Data{hdr, ..} | Packet::Ack{hdr, ..} | Packet::Nack{hdr, ..} => {
                 let flow_id = hdr.flow;
@@ -106,7 +107,10 @@ impl Node for Host {
 
                         pkts_to_send.extend(pkts); 
                     })?;
-                    self.active = true;
+
+                    if was_empty {
+                        self.active = true;
+                    }
                 } else if let Some(log) = logger {
                     warn!(log, "got isolated packet";
                         "packet" => ?p,
