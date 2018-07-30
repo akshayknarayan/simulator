@@ -98,153 +98,82 @@ mod tests {
     mod nack_test_switch {
         use ::{Nanos, Result};
         use event::Event;
-        use node::{NodeTransmitEvent, Link};
+        use node::{Link};
         use packet::{Packet, PacketHeader};
-        use node::switch::{Switch, Queue};
+        use node::switch::{Switch, Queue, nack_switch::NackSwitch};
         use slog;
 
         #[derive(Default, Debug)]
-        pub struct NackTestSwitch {
-            id: u32,
-            active: bool,
-            count: usize,
-            rack: Vec<Box<Queue>>,
-        }
+        pub struct NackTestSwitch(NackSwitch, usize);
 
         impl Switch for NackTestSwitch {
             fn new(
                 switch_id: u32,
                 links: impl Iterator<Item=Box<Queue>>,
             ) -> Self {
-                NackTestSwitch{
-                    id: switch_id,
-                    active: false,
-                    count: 0,
-                    rack: links.collect::<Vec<Box<Queue>>>(),
-                }
+                NackTestSwitch(NackSwitch::new(switch_id, links), 0)
             }
 
             fn id(&self) -> u32 {
-                self.id
+                self.0.id()
             }
 
             fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
-                self.active = true;
-                if let Some(log) = logger {
-                    debug!(log, "rx";
-                        "time" => time,
-                        "node" => self.id,
-                        "packet" => ?p,
-                    );
-                }
-                
                 match p {
-                    Packet::Pause(_) | Packet::Resume(_) => Ok(vec![]),
-                    Packet::Nack{hdr, ..} |
-                    Packet::Ack{hdr, ..} => {
-                        self.rack
-                            .iter_mut()
-                            .find(|ref q| {
-                                let link_dst = q.link().to;
-                                link_dst == hdr.to
-                            })
-                            .map_or_else(|| unimplemented!(), |rack_link_queue| {
-                                rack_link_queue.enqueue(p).unwrap();
-                            });
-                        
-                        Ok(vec![])
-                    }
-                    Packet::Data{hdr, seq, ..} => {
-                        let count = &mut self.count;
-                        let nack_pkt = self.rack
-                            .iter_mut()
-                            .find(|ref q| {
-                                let link_dst = q.link().to;
-                                link_dst == hdr.to
-                            })
-                            .map_or_else(|| unimplemented!(), |rack_link_queue| {
-                                *count += 1;
-                                // send packet out on rack_link_queue
-                                if *count == 3 {
-                                    // drop 3rd packet and send NACK
-                                    Some(Packet::Nack{
-                                        hdr: PacketHeader{
-                                            flow: hdr.flow,
-                                            from: hdr.to,
-                                            to: hdr.from,
-                                        },
-                                        nacked_seq: seq,
-                                    })
-                                } else {
-                                    rack_link_queue.enqueue(p).unwrap();
-                                    None
-                                }
-                            });
+                    Packet::Data{hdr,seq,..} => {
+                        self.1 += 1;
 
-                        if let Some(nack) = nack_pkt {
-                            let q = self.rack
+                        if self.1 == 3 {
+                            if let Some(log) = logger {
+                                debug!(log, "rx";
+                                    "time" => time,
+                                    "node" => self.0.id(),
+                                    "packet" => ?p,
+                                );
+                            }
+
+                            // drop 3rd packet and send NACK
+                            let nack_pkt = Packet::Nack{
+                                hdr: PacketHeader{
+                                    flow: hdr.flow,
+                                    from: hdr.to,
+                                    to: hdr.from,
+                                },
+                                nacked_seq: seq,
+                            };
+                            
+                            self.0.blocked_flows.insert(hdr.flow, seq);
+
+                            let q = self.0.rack
                                 .iter_mut()
                                 .find(|ref q| {
                                     let link_dst = q.link().to;
-                                    match nack {
+                                    match nack_pkt {
                                         Packet::Nack{hdr, ..} => link_dst == hdr.to,
                                         _ => unreachable!(),
                                     }
                                 })
                                 .unwrap();
-                            q.enqueue(nack).unwrap();
+                            q.enqueue(nack_pkt).unwrap();
+                            return Ok(vec![]);
                         }
-                        
-                        Ok(vec![])
                     }
-                }
+                    _ => (),
+                };
+
+                self.0.receive(p, time, logger)
             }
 
             fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
-                let id = self.id;
-                // step all queues forward
-                let evs = self.rack.iter_mut()
-                    .filter(|q| {
-                        q.is_active()
-                    })
-                    .filter_map(|q| {
-                        q.set_active(false);
-                        if let Some(pkt) = q.dequeue() {
-                            if let Some(log) = logger {
-                                debug!(log, "tx";
-                                    "time" => time,
-                                    "node" => id,
-                                    "packet" => ?pkt,
-                                );
-                            }
-
-                            Some(
-                                Box::new(
-                                    NodeTransmitEvent(q.link(), pkt)
-                                ) as Box<Event>,
-                            )
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<Box<Event>>>();
-
-                Ok(evs)
+                self.0.exec(time, logger)
             }
             
             fn reactivate(&mut self, l: Link) {
-                assert_eq!(l.from, self.id);
-                self.rack.iter_mut()
-                    .find(|q| {
-                        q.link().to == l.to
-                    })
-                    .map_or_else(|| unimplemented!(), |link_queue| {
-                        link_queue.set_active(true);
-                    });
+                self.0.reactivate(l)
             }
 
             fn is_active(&self) -> bool {
-                self.active
+                self.0.is_active()
             }
         }
     }
