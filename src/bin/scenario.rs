@@ -10,15 +10,11 @@ use rdma_sim::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
 use rdma_sim::congcontrol::ConstCwnd;
 
 extern crate viz;
-use viz::{SlogJSONReader, VizWriter, TikzWriter}; 
-
+extern crate clap;
 extern crate failure;
-
 #[macro_use] extern crate slog;
 extern crate slog_bunyan;
 extern crate slog_term;
-
-extern crate clap;
     
 /// Make a standard instance of `slog::Logger`.
 fn make_logger(slug: &str) -> slog::Logger {
@@ -134,34 +130,6 @@ fn run_scenario<S: Switch>(e: Executor<S>, logger: slog::Logger) {
     }
 }
 
-fn plot_log(slug: &str) -> Result<(), failure::Error> {
-    let logfile = format!("{}.tr", slug);
-    let outfile = format!("{}.tex", slug);
-    let logfile = File::open(logfile)?;
-    let outfile = File::create(outfile)?;
-    let reader = std::io::BufReader::new(logfile);
-    let reader = SlogJSONReader::new(reader);
-    let mut writer = TikzWriter::new(outfile, &[(0,0), (4, 5), (1, 10)]);
-    writer.dump_events(
-        reader
-            .get_events()
-            .filter(|e| {
-                e.annotation().as_str().starts_with("0")
-            }),
-    )?;
-    Ok(())
-}
-
-fn compile_viz(outfile: &str) -> Result<(), failure::Error> {
-    use std::process::Command;
-
-    Command::new("pdflatex")
-        .arg(outfile)
-        .output()?;
-
-    Ok(())
-}
-
 macro_rules! scenario {
     ($t: ty, $logger: expr) => {{
         let t = OneBigSwitch::<$t>::make_topology(4, 15_000, 1_000_000, 1_000_000);
@@ -184,6 +152,5 @@ fn main() {
         _ => unreachable!(),
     }
 
-    plot_log(slug.as_str()).unwrap();
-    compile_viz(slug.as_str()).unwrap();
+    viz::plot_log(slug.as_str()).unwrap();
 }

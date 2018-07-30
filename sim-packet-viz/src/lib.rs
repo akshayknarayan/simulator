@@ -286,6 +286,36 @@ impl<W: std::io::Write> VizWriter for TikzWriter<W> {
     }
 }
 
+fn compile_viz(outfile: &str) -> Result<(), failure::Error> {
+    use std::process::Command;
+
+    Command::new("pdflatex")
+        .arg(outfile)
+        .output()?;
+
+    Ok(())
+}
+
+pub fn plot_log(slug: &str) -> Result<(), failure::Error> {
+    use std::fs::File;
+    let logfile = format!("{}.tr", slug);
+    let outfilen = format!("{}.tex", slug);
+    let logfile = File::open(logfile)?;
+    let outfile = File::create(outfilen.as_str())?;
+    let reader = std::io::BufReader::new(logfile);
+    let reader = SlogJSONReader::new(reader);
+    let mut writer = TikzWriter::new(outfile, &[(0,0), (4, 5), (1, 10)]);
+    writer.dump_events(
+        reader
+            .get_events()
+            .filter(|e| {
+                e.annotation().as_str().starts_with("0")
+            }),
+    )?;
+
+    compile_viz(outfilen.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use std;
