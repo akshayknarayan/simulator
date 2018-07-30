@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn one_flow_with_nack() {
         let t = OneBigSwitch::<nack_test_switch::NackTestSwitch>::make_topology(2, 15_000, 1_000_000, 1_000_000);
-        let mut e = Executor::new(t, make_logger(Some("oneflow_nack.tr")));
+        let mut e = Executor::new(t, make_logger(None));
 
         let flowinfo = FlowInfo{
             flow_id: 1,
