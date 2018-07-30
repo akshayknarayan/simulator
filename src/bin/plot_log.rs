@@ -10,7 +10,7 @@ fn plot_log(logfile: &str, outfile: &str) -> Result<(), failure::Error> {
     let outfile = File::create(outfile)?;
     let reader = std::io::BufReader::new(logfile);
     let reader = SlogJSONReader::new(reader);
-    let mut writer = TikzWriter::new(outfile);
+    let mut writer = TikzWriter::new(outfile, &[(0,0), (4, 5), (1,10)]);
     writer.dump_events(
         reader
             .get_events()

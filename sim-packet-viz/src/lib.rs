@@ -169,29 +169,23 @@ pub trait VizWriter {
 
 pub struct TikzWriter<W: std::io::Write> {
     dump: W,
-    nodes: std::collections::HashSet<usize>,
-}
-
-fn x_coord_from_node(node: usize) -> Option<usize> {
-    match node {
-        0 => Some(0),
-        1 => Some(10),
-        2 => Some(5),
-        _ => None,
-    }
-}
-
-fn node_x_coords() -> impl Iterator<Item=usize> {
-    vec![0,2,1].into_iter()
+    nodes: Vec<(usize, usize)>,
 }
 
 impl<W: std::io::Write> TikzWriter<W> {
-    pub fn new(w: W) -> Self {
-        TikzWriter { dump: w, nodes: std::collections::HashSet::new() }
+    pub fn new(w: W, nodes: &[(usize, usize)]) -> Self {
+        TikzWriter { dump: w, nodes: nodes.to_vec() }
     }
 
     fn dump(&mut self, s: &str) -> Result<(), failure::Error> {
         self.dump.write(s.as_bytes()).map(|_| ()).map_err(failure::Error::from)
+    }
+
+    fn lookup(&self, node: usize) -> Option<usize> {
+        self.nodes
+            .iter()
+            .find(|&(n, _)| *n == node)
+            .map(|&(_, n)| n)
     }
 
     fn prelude(&mut self) -> Result<(), failure::Error> {
@@ -206,23 +200,26 @@ impl<W: std::io::Write> TikzWriter<W> {
     }
 
     fn postlude(&mut self, end_time: usize) -> Result<(), failure::Error> {
-        for node in node_x_coords() {
+        let nodes = self.nodes.iter();
+        let dump = &mut self.dump;
+        for node in nodes {
             let s = format!(
                 r#"\draw[very thick] ({0}, 0) -- ({0}, -{1}) ;
                 \draw ({0}, 0.5) node {{{2}}} ;
                 "#, 
-                x_coord_from_node(node).unwrap(), 
+                node.1, 
                 end_time as f64 / 1e6,
-                node
+                node.0
             );
-            self.dump(&s)?;
+
+            dump.write(s.as_bytes()).map_err(failure::Error::from)?;
         }
 
         let s = r#"
         \end{tikzpicture}
         \end{document}
         "#;
-        self.dump(s)
+        dump.write(s.as_bytes()).map(|_| ()).map_err(failure::Error::from)
     }
 
     fn single_edge(&mut self, tx_edge: &Box<LogEvent>, rx_edge: &Box<LogEvent>) -> Result<(), failure::Error> {
@@ -234,14 +231,11 @@ impl<W: std::io::Write> TikzWriter<W> {
         let tx_node = tx_edge.node();
         let rx_node = rx_edge.node();
 
-        self.nodes.insert(tx_node);
-        self.nodes.insert(rx_node);
-
-        if let None = x_coord_from_node(tx_node) {
+        if let None = self.lookup(tx_node) {
             return Ok(()); // skip
         }
         
-        if let None = x_coord_from_node(rx_node) {
+        if let None = self.lookup(rx_node) {
             return Ok(()); // skip
         }
 
@@ -249,9 +243,9 @@ impl<W: std::io::Write> TikzWriter<W> {
             r#"\draw[{4}] ({0},-{1}) -> ({2},-{3}) 
               node[pos=0.5,sloped,{4}] {{{5}}} ;
             "#, 
-            x_coord_from_node(tx_node).unwrap(), 
+            self.lookup(tx_node).unwrap(), 
             tx_time, 
-            x_coord_from_node(rx_node).unwrap(), 
+            self.lookup(rx_node).unwrap(), 
             rx_time,
             tx_edge.color(),
             tx_edge.annotation(),
@@ -345,7 +339,7 @@ mod tests {
         use std::io::Cursor;
         let mut buf = Cursor::new(vec![0;1024]);
         {
-        let mut writer = TikzWriter::new(&mut buf);
+        let mut writer = TikzWriter::new(&mut buf, &[(0, 0), (4, 5), (1, 10)]);
         writer.dump_events(reader.get_events()).unwrap();
         }
 
