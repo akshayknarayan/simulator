@@ -10,3 +10,4 @@ slog = "2"
 slog-bunyan = "2"
 slog-term = "2"
 viz = { path = "./sim-packet-viz" }
+clap = "~2.32"

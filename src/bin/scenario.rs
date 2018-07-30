@@ -5,7 +5,7 @@ extern crate rdma_sim;
 use rdma_sim::topology::{Topology, TopologyStrategy};
 use rdma_sim::topology::one_big_switch::OneBigSwitch;
 use rdma_sim::event::Executor;
-use rdma_sim::node::switch::{Switch, nack_switch::NackSwitch};
+use rdma_sim::node::switch::{Switch, nack_switch::NackSwitch, pfc_switch::PFCSwitch, lossy_switch::LossySwitch};
 use rdma_sim::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
 use rdma_sim::congcontrol::ConstCwnd;
 
@@ -17,14 +17,17 @@ extern crate failure;
 #[macro_use] extern crate slog;
 extern crate slog_bunyan;
 extern crate slog_term;
+
+extern crate clap;
     
 /// Make a standard instance of `slog::Logger`.
-fn make_logger(filename: &str) -> slog::Logger {
+fn make_logger(slug: &str) -> slog::Logger {
     use std::sync::Mutex;
     use slog::Drain;
     use slog_bunyan;
     use slog_term;
 
+    let filename = format!("{}.tr", slug);
     let f = File::create(filename).unwrap();
     let json_drain = Mutex::new(slog_bunyan::default(f)).fuse();
 
@@ -35,6 +38,41 @@ fn make_logger(filename: &str) -> slog::Logger {
         json_drain,
         term_drain,
     ).fuse(), o!())
+}
+
+fn do_args() -> String {
+    use clap::App;
+    use clap::Arg;
+
+    let matches = App::new("Scenario")
+        .version("0.1")
+        .author("Akshay Narayan <akshayn@mit.edu")
+        .arg(Arg::with_name("switch_type")
+            .help("Type of switch to use")
+            .long("switch-type")
+            .short("s")
+            .takes_value(true)
+            .possible_values(&["pfc", "nacks", "lossy"])
+            .required(true))
+        .get_matches();
+
+    matches.value_of("switch_type").unwrap().to_string()
+}
+
+fn log_commit_hash(logger: slog::Logger) {
+    use std::process::Command;
+
+    let cmd = Command::new("git")
+        .arg("log")
+        .arg("--no-decorate")
+        .arg("--oneline")
+        .args(&["-n", "1"])
+        .output()
+        .unwrap();
+    let stdout = std::str::from_utf8(&cmd.stdout).unwrap();
+    info!(logger, "commit";
+          "log" => stdout.trim(),
+    );
 }
 
 fn victim_flow_scenario<S: Switch>(t: Topology<S>, logger: slog::Logger) -> Executor<S> {
@@ -89,13 +127,16 @@ fn run_scenario<S: Switch>(e: Executor<S>, logger: slog::Logger) {
         }) {
 
         info!(logger, "fct";
+            "victim" => f.flow_info().flow_id == 0,
             "id" => f.flow_info().flow_id,
             "fct" => f.completion_time().unwrap(),
         );
     }
 }
 
-fn plot_log(logfile: &str, outfile: &str) -> Result<(), failure::Error> {
+fn plot_log(slug: &str) -> Result<(), failure::Error> {
+    let logfile = format!("{}.tr", slug);
+    let outfile = format!("{}.tex", slug);
     let logfile = File::open(logfile)?;
     let outfile = File::create(outfile)?;
     let reader = std::io::BufReader::new(logfile);
@@ -105,7 +146,7 @@ fn plot_log(logfile: &str, outfile: &str) -> Result<(), failure::Error> {
         reader
             .get_events()
             .filter(|e| {
-                e.annotation().as_str().starts_with("1")
+                e.annotation().as_str().starts_with("0")
             }),
     )?;
     Ok(())
@@ -121,13 +162,28 @@ fn compile_viz(outfile: &str) -> Result<(), failure::Error> {
     Ok(())
 }
 
+macro_rules! scenario {
+    ($t: ty, $logger: expr) => {{
+        let t = OneBigSwitch::<$t>::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        let scenario = victim_flow_scenario(t, $logger);
+        run_scenario(scenario, $logger);
+    }}
+}
+
 fn main() {
-    let t = OneBigSwitch::<NackSwitch>::make_topology(4, 15_000, 1_000_000, 1_000_000);
-    let logfile = "victimflow-nacks.tr";
-    let outfile = "victimflow-nacks.tex";
-    let logger = make_logger(logfile);
-    let scenario = victim_flow_scenario(t, logger.clone());
-    run_scenario(scenario, logger);
-    plot_log(logfile, outfile).unwrap();
-    compile_viz(outfile).unwrap();
+    let switch_opt = do_args();
+    let slug = format!("victimflow-nacks-{}", switch_opt);
+
+    let logger = make_logger(slug.as_str());
+    log_commit_hash(logger.clone());
+
+    match switch_opt.as_str() {
+        "pfc" => scenario!(PFCSwitch, logger.clone()),
+        "nacks" => scenario!(NackSwitch, logger.clone()),
+        "lossy" => scenario!(LossySwitch, logger.clone()),
+        _ => unreachable!(),
+    }
+
+    plot_log(slug.as_str()).unwrap();
+    compile_viz(slug.as_str()).unwrap();
 }
