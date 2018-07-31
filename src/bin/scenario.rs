@@ -152,5 +152,5 @@ fn main() {
         _ => unreachable!(),
     }
 
-    viz::plot_log(slug.as_str()).unwrap();
+    viz::plot_log(slug.as_str(), 0).unwrap();
 }

@@ -39,8 +39,6 @@ pub enum EventMatchSide {
 pub trait LogEvent: std::fmt::Debug {
     fn adj_time(&mut self, start_time: usize);
     fn time(&self) -> usize;
-    fn from(&self) -> usize;
-    fn to(&self) -> usize;
     fn node(&self) -> usize;
     fn event(&self) -> Option<EventMatchSide>;
     fn annotation(&self) -> String;
@@ -54,18 +52,14 @@ pub struct JsonLogEvent{
     json_object: json::JsonValue, 
     adj_time: usize,
     packet_type: String, 
-    flow: usize,
-    from: usize, 
-    to: usize, 
-    seq: usize,
+    flow: String,
+    seq: String,
 }
 
 impl JsonLogEvent {
     fn new(json: json::JsonValue) -> Result<Self, failure::Error> {
         lazy_static! {
-            static ref TYPE_RE: Regex = Regex::new(r"^(\w+) ").unwrap();
-            static ref FROM_RE: Regex = Regex::new(r" from: (\d+)(?:,| )").unwrap();
-            static ref TO_RE: Regex = Regex::new(r" to: (\d+)(?:,| )").unwrap();
+            static ref TYPE_RE: Regex = Regex::new(r"^(\w+)(?: |\()").unwrap();
             static ref FLOW_RE: Regex = Regex::new(r" flow: (\d+)(?:,| )").unwrap();
             static ref SEQ_RE: Regex = Regex::new(r"seq: (\d+)(?:,| )").unwrap();
         }
@@ -74,23 +68,22 @@ impl JsonLogEvent {
             bail!("Packet field not found")
         } else {
             let j = json.clone();
-            let pkt_line = j["packet"].as_str().unwrap();
+            let adj_time = json["time"].as_usize().ok_or_else(|| format_err!("Did not match time"))?;
+            let pkt_line = j["packet"].as_str().ok_or_else(|| format_err!("Did not match packet"))?;
             let type_match = TYPE_RE.captures(pkt_line).ok_or_else(|| format_err!("Did not match type"))?;
-            let from_match = FROM_RE.captures(pkt_line).ok_or_else(|| format_err!("Did not match from"))?;
-            let to_match = TO_RE.captures(pkt_line).ok_or_else(|| format_err!("Did not match to"))?;
-            let flow_match = FLOW_RE.captures(pkt_line).ok_or_else(|| format_err!("Did not match flow"))?;
-            let seq_match = SEQ_RE.captures(pkt_line).ok_or_else(|| format_err!("Did not match seq"))?;
-
-            let adj_time = json["time"].as_usize().unwrap();
+            let flow = FLOW_RE.captures(pkt_line)
+                .map(|m| m[1].to_string())
+                .unwrap_or_else(|| "*".to_owned());
+            let seq = SEQ_RE.captures(pkt_line)
+                .map(|m| m[1].to_string())
+                .unwrap_or_else(|| "*".to_owned());
 
             Ok(JsonLogEvent{
                 json_object: json,
                 adj_time,
                 packet_type: type_match[1].to_string(),
-                flow: flow_match[1].parse()?,
-                from: from_match[1].parse()?,
-                to: to_match[1].parse()?,
-                seq: seq_match[1].parse()?,
+                flow,
+                seq,
             })
         }
     }
@@ -103,14 +96,6 @@ impl LogEvent for JsonLogEvent {
 
     fn time(&self) -> usize {
         self.adj_time
-    }
-
-    fn from(&self) -> usize {
-        self.from
-    }
-    
-    fn to(&self) -> usize {
-        self.to
     }
 
     fn node(&self) -> usize {
@@ -153,7 +138,7 @@ impl<R: std::io::Read> SlogJSONReader<R> {
             .filter(|l| !l.trim().is_empty())
             .filter_map(|line| {
                 let parsed = json::parse(&line).ok()?;
-                JsonLogEvent::new(parsed).ok()
+                JsonLogEvent::new(parsed.clone()).ok()
             })
             .map(move |mut parsed| {
                 let start = start_time.get_or_insert(parsed.time());
@@ -296,7 +281,7 @@ fn compile_viz(outfile: &str) -> Result<(), failure::Error> {
     Ok(())
 }
 
-pub fn plot_log(slug: &str) -> Result<(), failure::Error> {
+pub fn plot_log(slug: &str, wanted_flow: usize) -> Result<(), failure::Error> {
     use std::fs::File;
     let logfile = format!("{}.tr", slug);
     let outfilen = format!("{}.tex", slug);
@@ -309,7 +294,9 @@ pub fn plot_log(slug: &str) -> Result<(), failure::Error> {
         reader
             .get_events()
             .filter(|e| {
-                e.annotation().as_str().starts_with("0")
+                let a = e.annotation();
+                a.starts_with(wanted_flow.to_string().as_str())
+                    || a.starts_with("*")
             }),
     )?;
 
@@ -333,8 +320,6 @@ mod tests {
         assert_eq!(evs.len(), 1);
         let ev = &evs[0];
         assert_eq!(ev.time(), 0);
-        assert_eq!(ev.from(), 0);
-        assert_eq!(ev.to(), 1);
         assert_eq!(ev.node(), 1);
         assert_eq!(ev.event(), Some(EventMatchSide::Rx));
         assert_eq!(ev.annotation(), "0-Data-37960");
