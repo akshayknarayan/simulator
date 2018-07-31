@@ -9,6 +9,7 @@ pub struct DropTailQueue{
     limit_bytes: u32,
     link: Link,
     pkts: VecDeque<Packet>,
+    forced_next: Option<Packet>,
     active: bool,
     paused: bool,
 }
@@ -19,6 +20,7 @@ impl DropTailQueue {
             limit_bytes,
             link,
             pkts: VecDeque::new(),
+            forced_next: None,
             active: false,
             paused: false,
         }
@@ -51,23 +53,20 @@ impl Queue for DropTailQueue {
     }
     
     fn force_tx_next(&mut self, p: Packet) -> Option<()> {
-        let occupancy_bytes = self.occupancy_bytes();
-        if occupancy_bytes + p.get_size_bytes() > self.limit_bytes {
-            // we have to drop this packet
-            return None;
-        }
-
-        self.pkts.push_front(p);
-        self.set_active(true);
+        self.forced_next = Some(p);
         Some(())
     }
 
     fn dequeue(&mut self) -> Option<Packet> {
-        if self.pkts.len() == 1 {
-            self.set_active(false);
-        }
+        if let None = self.forced_next {
+            if self.pkts.len() == 1 {
+                self.set_active(false);
+            }
 
-        self.pkts.pop_front()
+            self.pkts.pop_front()
+        } else {
+            self.forced_next.take()
+        }
     }
 
     fn discard_matching(&mut self, mut should_discard: Box<FnMut(Packet) -> bool>) -> usize {

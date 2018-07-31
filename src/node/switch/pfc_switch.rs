@@ -17,14 +17,8 @@ pub struct PFCSwitch {
 }
 
 impl PFCSwitch {
-    fn pause_incoming(&mut self, logger: Option<&slog::Logger>) {
+    fn pause_incoming(&mut self, time: Nanos, logger: Option<&slog::Logger>) {
         let id = self.id;
-        // send pauses to upstream queues
-        if let Some(log) = logger {
-            debug!(log, "pausing";
-               "node" => self.id,
-            );
-        }
 
         self.rack
             .iter_mut()
@@ -41,22 +35,34 @@ impl PFCSwitch {
             // 3. B sends PAUSE to A, but it is corrupted (possible?)
             // 4. B receives packet P
             // 5. B sends PAUSE again
+            if let Some(log) = logger {
+                debug!(log, "tx";
+                    "time" => time,
+                    "node" => id,
+                    "packet" => ?Packet::Pause(id),
+                );
+            }
+
+            // send pauses to upstream queues
             q.force_tx_next(Packet::Pause(id)).unwrap();
         });
     }
 
-    fn resume_incoming(&mut self, logger: Option<&slog::Logger>) {
+    fn resume_incoming(&mut self, time: Nanos, logger: Option<&slog::Logger>) {
         let id = self.id;
-        if let Some(log) = logger {
-            debug!(log, "resuming";
-                "node" => self.id,
-            );
-        }
 
         self.rack
             .iter_mut()
             .chain(self.core.iter_mut())
             .for_each(|(q, _)| {
+                if let Some(log) = logger {
+                    debug!(log, "tx";
+                        "time" => time,
+                        "node" => id,
+                        "packet" => ?Packet::Resume(id), 
+                    );
+                }
+
                 q.force_tx_next(Packet::Resume(id)).unwrap();
             });
     }
@@ -143,8 +149,7 @@ impl Switch for PFCSwitch {
                             return;
                         }
 
-                        if rack_link_queue.link().pfc_enabled
-                            && !*already_paused 
+                        if !*already_paused 
                             && rack_link_queue.headroom() <= rack_link_queue.link().pfc_pause_threshold() {
                             // outgoing queue has filled up
                             *already_paused = true;
@@ -153,7 +158,7 @@ impl Switch for PFCSwitch {
 					});
                 
                 if should_pause {
-                    self.pause_incoming(logger);
+                    self.pause_incoming(time, logger);
                 }
 
                 Ok(vec![])
@@ -173,8 +178,7 @@ impl Switch for PFCSwitch {
                 q.set_active(false);
                 if let Some(pkt) = q.dequeue() {
                     // check if queue is sufficiently empty
-                    if q.link().pfc_enabled
-                        && *is_paused 
+                    if *is_paused 
                         && q.headroom() > q.link().pfc_resume_threshold() {
                         *is_paused = false;
                         should_resume = true;
@@ -200,7 +204,7 @@ impl Switch for PFCSwitch {
             .collect::<Vec<Box<Event>>>();
 
         if should_resume {
-            self.resume_incoming(logger);
+            self.resume_incoming(time, logger);
         }
 
         Ok(evs)

@@ -90,7 +90,7 @@ fn victim_flow_scenario<S: Switch>(t: Topology<S>, logger: slog::Logger) -> Exec
         flow_id: 1,
         sender_id: 2,
         dest_id: 0,
-        length_bytes: 43800, // 30 packet flow
+        length_bytes: 438000, // 300 packet flow
         max_packet_length: 1460,
     };
 
@@ -102,7 +102,7 @@ fn victim_flow_scenario<S: Switch>(t: Topology<S>, logger: slog::Logger) -> Exec
         flow_id: 2,
         sender_id: 3,
         dest_id: 0,
-        length_bytes: 43800, // 30 packet flow
+        length_bytes: 438000, // 300 packet flow
         max_packet_length: 1460,
     };
 
