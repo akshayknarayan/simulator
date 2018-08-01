@@ -15,7 +15,7 @@ pub mod switch;
 /// A Node is an entity that can receive Packets.
 pub trait Node : Debug {
     fn id(&self) -> u32;
-    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
+    fn receive(&mut self, p: Packet, l: Link, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
     fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
     fn reactivate(&mut self, l: Link);
     fn flow_arrival(&mut self, f: Box<Flow>);
@@ -82,7 +82,13 @@ impl Node for Host {
         self.id
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+    fn receive(
+        &mut self, 
+        p: Packet, 
+        _l: Link, 
+        time: Nanos, 
+        logger: Option<&slog::Logger>,
+    ) -> Result<Vec<Box<Event>>> {
         if let Some(log) = logger {
             debug!(log, "rx";
                 "time" => time,
@@ -210,7 +216,7 @@ impl Event for LinkTransmitEvent {
     }
 
     fn exec(&mut self, time: Nanos, nodes: &mut [&mut Node], logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
-        nodes[0].receive(self.1.clone(), time, logger)
+        nodes[0].receive(self.1.clone(), self.0, time, logger)
     }
 }
 

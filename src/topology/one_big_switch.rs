@@ -98,3 +98,32 @@ impl<S: Switch> TopologyStrategy<S> for OneBigSwitch<S> {
         )
     }
 }
+
+pub struct OneBigSwitchPFC<S: Switch>(PhantomData<S>);
+impl<S: Switch> TopologyStrategy<S> for OneBigSwitchPFC<S> {
+    fn make_topology(
+        num_hosts: u32,
+        queue_length_bytes: u32,
+        access_link_bandwidth: u64,
+        per_link_propagation_delay: Nanos,
+    ) -> Topology<S> {
+        let big_switch = S::new(
+            num_hosts, 
+            switch_links(
+                num_hosts, 
+                queue_length_bytes,
+                access_link_bandwidth,
+                per_link_propagation_delay,
+                true,
+            ),
+        );
+
+        topology(
+            num_hosts, 
+            access_link_bandwidth,
+            per_link_propagation_delay,
+            true,
+            big_switch,
+        )
+    }
+}

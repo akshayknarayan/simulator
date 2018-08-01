@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PacketHeader {
     pub flow: u32,
     pub from: u32,
@@ -11,7 +11,7 @@ impl PacketHeader{
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Packet {
     Data{hdr: PacketHeader, seq: u32, length: u32},
     Ack{hdr: PacketHeader, cumulative_acked_seq: u32},

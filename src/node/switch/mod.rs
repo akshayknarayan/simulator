@@ -16,7 +16,7 @@ pub trait Queue : Debug {
     fn force_tx_next(&mut self, p: Packet) -> Option<()>;
     fn dequeue(&mut self) -> Option<Packet>;
     fn discard_matching(&mut self, Box<FnMut(Packet) -> bool>) -> usize;
-    fn peek(&self) -> Option<&Packet>;
+    fn count_matching(&self, Box<FnMut(Packet) -> bool>) -> usize;
     fn headroom(&self) -> u32;
     fn is_active(&self) -> bool;
     fn set_active(&mut self, a: bool);
@@ -32,7 +32,13 @@ pub trait Switch: Debug {
         links: impl Iterator<Item=Box<Queue>>,
     ) -> Self;
     fn id(&self) -> u32;
-    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
+    fn receive(
+        &mut self, 
+        p: Packet, 
+        l: Link, 
+        time: Nanos, 
+        logger: Option<&slog::Logger>,
+    ) -> Result<Vec<Box<Event>>>;
     fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>>;
     fn reactivate(&mut self, l: Link);
     fn is_active(&self) -> bool;
@@ -43,8 +49,14 @@ impl<S: Switch> Node for S {
         self.id()
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
-        self.receive(p, time, logger)
+    fn receive(
+        &mut self, 
+        p: Packet, 
+        l: Link, 
+        time: Nanos, 
+        logger: Option<&slog::Logger>,
+    ) -> Result<Vec<Box<Event>>> {
+        self.receive(p, l, time, logger)
     }
 
     fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {

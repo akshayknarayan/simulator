@@ -54,6 +54,7 @@ impl Queue for DropTailQueue {
     
     fn force_tx_next(&mut self, p: Packet) -> Option<()> {
         self.forced_next = Some(p);
+        self.set_active(true);
         Some(())
     }
 
@@ -76,9 +77,9 @@ impl Queue for DropTailQueue {
         *pkts = after_pkts;
         dropped
     }
-    
-    fn peek(&self) -> Option<&Packet> {
-        self.pkts.front()
+
+    fn count_matching(&self, mut counter: Box<FnMut(Packet) -> bool>) -> usize {
+        self.pkts.iter().filter(|&&p| counter(p)).count()
     }
 
     fn is_active(&self) -> bool {

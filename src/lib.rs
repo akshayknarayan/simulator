@@ -22,9 +22,9 @@ mod tests {
     use std::marker::PhantomData;
     use slog;
     use super::topology::{Topology, TopologyStrategy};
-    use super::topology::one_big_switch::OneBigSwitch;
+    use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
     use super::event::Executor;
-    use super::node::switch::{Switch, lossy_switch::LossySwitch, nack_switch::NackSwitch, pfc_switch::PFCSwitch};
+    use super::node::switch::{Switch, lossy_switch::LossySwitch, nack_switch::NackSwitch, pfc_switch::{PFCSwitch, IngressPFCSwitch}};
     use super::packet::{Packet, PacketHeader};
     use super::flow::{FlowArrivalEvent, FlowInfo};
     use super::congcontrol::ConstCwnd;
@@ -118,7 +118,7 @@ mod tests {
                 self.0.id()
             }
 
-            fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+            fn receive(&mut self, p: Packet, l: Link, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
                 match p {
                     Packet::Data{hdr,seq,..} => {
                         self.1 += 1;
@@ -161,7 +161,7 @@ mod tests {
                     _ => (),
                 };
 
-                self.0.receive(p, time, logger)
+                self.0.receive(p, l, time, logger)
             }
 
             fn exec(&mut self, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
@@ -224,12 +224,18 @@ mod tests {
 
     #[test]
     fn two_flows_pfc() {
-        let t = OneBigSwitch::<PFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        let t = OneBigSwitchPFC::<PFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        two_flows_scenario(t)
+    }
+
+    #[test]
+    fn two_flows_pfc_ingress() {
+        let t = OneBigSwitchPFC::<IngressPFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
         two_flows_scenario(t)
     }
 
     fn two_flows_scenario<S: Switch>(t: Topology<S>) {
-        let mut e = Executor::new(t, None);
+        let mut e = Executor::new(t, make_logger(None));
 
         let flow1 = FlowInfo{
             flow_id: 1,

@@ -36,7 +36,13 @@ impl Switch for NackSwitch {
         self.id
     }
 
-    fn receive(&mut self, p: Packet, time: Nanos, logger: Option<&slog::Logger>) -> Result<Vec<Box<Event>>> {
+    fn receive(
+        &mut self, 
+        p: Packet, 
+        _l: Link, 
+        time: Nanos, 
+        logger: Option<&slog::Logger>,
+    ) -> Result<Vec<Box<Event>>> {
         self.active = true;
         let id = self.id;
         if let Some(log) = logger {

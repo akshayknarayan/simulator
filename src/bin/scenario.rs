@@ -3,7 +3,7 @@ use std::fs::File;
 
 extern crate rdma_sim;
 use rdma_sim::topology::{Topology, TopologyStrategy};
-use rdma_sim::topology::one_big_switch::OneBigSwitch;
+use rdma_sim::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
 use rdma_sim::event::Executor;
 use rdma_sim::node::switch::{Switch, nack_switch::NackSwitch, pfc_switch::PFCSwitch, lossy_switch::LossySwitch};
 use rdma_sim::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
@@ -131,8 +131,8 @@ fn run_scenario<S: Switch>(e: Executor<S>, logger: slog::Logger) {
 }
 
 macro_rules! scenario {
-    ($t: ty, $logger: expr) => {{
-        let t = OneBigSwitch::<$t>::make_topology(4, 15_000, 1_000_000, 1_000_000);
+    ($s: tt, $t: ty, $logger: expr) => {{
+        let t = $s::<$t>::make_topology(4, 15_000, 1_000_000, 1_000_000);
         let scenario = victim_flow_scenario(t, $logger);
         run_scenario(scenario, $logger);
     }}
@@ -146,9 +146,9 @@ fn main() {
     log_commit_hash(logger.clone());
 
     match switch_opt.as_str() {
-        "pfc" => scenario!(PFCSwitch, logger.clone()),
-        "nacks" => scenario!(NackSwitch, logger.clone()),
-        "lossy" => scenario!(LossySwitch, logger.clone()),
+        "pfc" => scenario!(OneBigSwitchPFC, PFCSwitch, logger.clone()),
+        "nacks" => scenario!(OneBigSwitch, NackSwitch, logger.clone()),
+        "lossy" => scenario!(OneBigSwitch, LossySwitch, logger.clone()),
         _ => unreachable!(),
     }
 
