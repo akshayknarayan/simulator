@@ -1,13 +1,9 @@
-use std::marker::PhantomData;
 use std::fs::File;
 
 extern crate rdma_sim;
-use rdma_sim::topology::{Topology, TopologyStrategy};
-use rdma_sim::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
-use rdma_sim::event::Executor;
-use rdma_sim::node::switch::{Switch, nack_switch::NackSwitch, pfc_switch::PFCSwitch, lossy_switch::LossySwitch};
-use rdma_sim::flow::{FlowArrivalEvent, FlowInfo, FlowSide};
-use rdma_sim::congcontrol::ConstCwnd;
+use rdma_sim::node::switch::{Switch, nack_switch::NackSwitch, pfc_switch::{PFCSwitch, IngressPFCSwitch}, lossy_switch::LossySwitch};
+use rdma_sim::flow::FlowSide;
+use rdma_sim::{Scenario, SharedIngressVictimFlowScenario, IndependentVictimFlowScenario};
 
 extern crate viz;
 extern crate clap;
@@ -36,7 +32,7 @@ fn make_logger(slug: &str) -> slog::Logger {
     ).fuse(), o!())
 }
 
-fn do_args() -> String {
+fn do_args() -> (String, String) {
     use clap::App;
     use clap::Arg;
 
@@ -46,13 +42,23 @@ fn do_args() -> String {
         .arg(Arg::with_name("switch_type")
             .help("Type of switch to use")
             .long("switch-type")
-            .short("s")
+            .short("t")
             .takes_value(true)
-            .possible_values(&["pfc", "nacks", "lossy"])
+            .possible_values(&["pfc", "ingresspfc", "nacks", "lossy"])
+            .required(true))
+        .arg(Arg::with_name("scenario")
+            .help("Name of the scenario to run")
+            .long("scenario")
+            .short("r")
+            .takes_value(true)
+            .possible_values(&["shared_ingress_victim", "independent_victim"])
             .required(true))
         .get_matches();
 
-    matches.value_of("switch_type").unwrap().to_string()
+    (
+        matches.value_of("switch_type").unwrap().to_string(),
+        matches.value_of("scenario").unwrap().to_string(),
+    )
 }
 
 fn log_commit_hash(logger: slog::Logger) {
@@ -71,49 +77,8 @@ fn log_commit_hash(logger: slog::Logger) {
     );
 }
 
-fn victim_flow_scenario<S: Switch>(t: Topology<S>, logger: slog::Logger) -> Executor<S> {
-    let mut e = Executor::new(t, logger.clone());
-
-    let flow = FlowInfo{
-        flow_id: 0,
-        sender_id: 0,
-        dest_id: 1,
-        length_bytes: 43800, // 30 packet flow
-        max_packet_length: 1460,
-    };
-
-    // starts at t = 1.1s
-    let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_100_000_000, PhantomData::<ConstCwnd>));
-    e.push(flow_arrival);
-
-    let flow = FlowInfo{
-        flow_id: 1,
-        sender_id: 2,
-        dest_id: 0,
-        length_bytes: 438000, // 300 packet flow
-        max_packet_length: 1460,
-    };
-
-    // starts at t = 1.0s
-    let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
-    e.push(flow_arrival);
-
-    let flow = FlowInfo{
-        flow_id: 2,
-        sender_id: 3,
-        dest_id: 0,
-        length_bytes: 438000, // 300 packet flow
-        max_packet_length: 1460,
-    };
-
-    // starts at t = 1.0s
-    let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
-    e.push(flow_arrival);
-
-    e
-}
-
-fn run_scenario<S: Switch>(e: Executor<S>, logger: slog::Logger) {
+fn run_scenario_switch<C: Scenario, S: Switch>(logger: slog::Logger) {
+    let e = C::make::<S>(Some(logger.clone()));
     let mut e = e.execute().unwrap();
     for f in e.components().1
         .all_flows()
@@ -130,25 +95,28 @@ fn run_scenario<S: Switch>(e: Executor<S>, logger: slog::Logger) {
     }
 }
 
-macro_rules! scenario {
-    ($s: tt, $t: ty, $logger: expr) => {{
-        let t = $s::<$t>::make_topology(4, 15_000, 1_000_000, 1_000_000);
-        let scenario = victim_flow_scenario(t, $logger);
-        run_scenario(scenario, $logger);
-    }}
+fn run_scenario<C: Scenario>(switch: &str, logger: slog::Logger) {
+    match switch {
+        "pfc" => run_scenario_switch::<C, PFCSwitch>(logger),
+        "ingresspfc" => run_scenario_switch::<C, IngressPFCSwitch>(logger),
+        "nacks" => run_scenario_switch::<C, NackSwitch>(logger),
+        "lossy" => run_scenario_switch::<C, LossySwitch>(logger),
+        _ => unreachable!(),
+    }
 }
 
+
+
 fn main() {
-    let switch_opt = do_args();
-    let slug = format!("victimflow-nacks-{}", switch_opt);
+    let (switch, scenario) = do_args();
+    let slug = format!("{}-{}", scenario, switch);
 
     let logger = make_logger(slug.as_str());
     log_commit_hash(logger.clone());
 
-    match switch_opt.as_str() {
-        "pfc" => scenario!(OneBigSwitchPFC, PFCSwitch, logger.clone()),
-        "nacks" => scenario!(OneBigSwitch, NackSwitch, logger.clone()),
-        "lossy" => scenario!(OneBigSwitch, LossySwitch, logger.clone()),
+    match scenario.as_str() {
+        "shared_ingress_victim" => run_scenario::<SharedIngressVictimFlowScenario>(switch.as_str(), logger),
+        "independent_victim" => run_scenario::<IndependentVictimFlowScenario>(switch.as_str(), logger),
         _ => unreachable!(),
     }
 

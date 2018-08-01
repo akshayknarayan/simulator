@@ -1,3 +1,5 @@
+#![feature(specialization)]
+
 #[macro_use]
 extern crate failure;
 extern crate itertools;
@@ -17,12 +19,145 @@ pub mod node;
 pub mod flow;
 pub mod congcontrol;
 
+use std::marker::PhantomData;
+
+use congcontrol::ConstCwnd;
+use event::Executor;
+use flow::{FlowArrivalEvent, FlowInfo};
+use node::switch::Switch;
+use topology::{TopologyStrategy, one_big_switch::OneBigSwitch};
+
+pub trait Scenario {
+    fn make<S: Switch>(logger: Option<slog::Logger>) -> Executor<S>;
+}
+
+/// `independent_victim_flow_scenario()` is the difference between `IngressPFCSwitch` and `PFCSwitch`.
+/// (See `shared_ingress_victim_flow_scenario()`)
+/// `PFCSwitch` does not consider ingress queue occupancy when doing PFC; it is a "naive" switch
+/// implementation.
+/// Consider this simple topology:
+///
+/// `Host` 0 -------
+///                 \
+/// `Host` 1 --------\
+///                   ---- 4 (`Switch`)
+/// `Host` 2 --------/
+///                 /
+/// `Host` 3 -------
+///
+/// `Host` 3 and 2 send to `Host` 0, creating congestion. 
+/// A "victim flow" goes from `Host` *0* to `Host` 1.
+/// When the queue to `Host` 0 fills, `Switch` 4, a `PFCSwitch`, will PAUSE *all* incoming links, so the "victim flow"
+/// will also be paused.
+///
+/// `Host` 3 and 2 send to `Host` 0, creating congestion. 
+/// A "victim flow" goes from `Host` *2* to `Host` 1.
+/// When the queue to `Host` 0 fills, `Switch` 4, an `IngressPFCSwitch` will PAUSE *only* the
+/// congested incoming queues, but the "victim flow" is sending from `Host` 2 and will still get
+/// caught.
+pub struct IndependentVictimFlowScenario;
+
+impl Scenario for IndependentVictimFlowScenario {
+    fn make<S: Switch>(logger: Option<slog::Logger>) -> Executor<S> {
+        let t = OneBigSwitch::<S>::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        let mut e = Executor::new(t, logger);
+
+        let flow = FlowInfo{
+            flow_id: 0,
+            sender_id: 0,
+            dest_id: 1,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.1s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_100_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let flow = FlowInfo{
+            flow_id: 1,
+            sender_id: 2,
+            dest_id: 0,
+            length_bytes: 438000, // 300 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let flow = FlowInfo{
+            flow_id: 2,
+            sender_id: 3,
+            dest_id: 0,
+            length_bytes: 438000, // 300 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        e
+    }
+}
+
+/// `shared_ingress_victim_flow_scenario()` is the difference between `IngressPFCSwitch` and `PFCSwitch`.
+/// (See `independent_victim_flow_scenario()`)
+pub struct SharedIngressVictimFlowScenario;
+
+impl Scenario for SharedIngressVictimFlowScenario {
+    fn make<S: Switch>(logger: Option<slog::Logger>) -> Executor<S> {
+        let t = OneBigSwitch::<S>::make_topology(4, 15_000, 1_000_000, 1_000_000);
+        let mut e = Executor::new(t, logger);
+
+        let flow = FlowInfo{
+            flow_id: 0,
+            sender_id: 2,
+            dest_id: 1,
+            length_bytes: 43800, // 30 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.1s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_100_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let flow = FlowInfo{
+            flow_id: 1,
+            sender_id: 2,
+            dest_id: 0,
+            length_bytes: 438000, // 300 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        let flow = FlowInfo{
+            flow_id: 2,
+            sender_id: 3,
+            dest_id: 0,
+            length_bytes: 438000, // 300 packet flow
+            max_packet_length: 1460,
+        };
+
+        // starts at t = 1.0s
+        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
+        e.push(flow_arrival);
+
+        e
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
     use slog;
+    use super::Scenario;
     use super::topology::{Topology, TopologyStrategy};
-    use super::topology::one_big_switch::{OneBigSwitch, OneBigSwitchPFC};
+    use super::topology::one_big_switch::OneBigSwitch;
     use super::event::Executor;
     use super::node::switch::{Switch, lossy_switch::LossySwitch, nack_switch::NackSwitch, pfc_switch::{PFCSwitch, IngressPFCSwitch}};
     use super::packet::{Packet, PacketHeader};
@@ -224,13 +359,13 @@ mod tests {
 
     #[test]
     fn two_flows_pfc() {
-        let t = OneBigSwitchPFC::<PFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        let t = OneBigSwitch::<PFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
         two_flows_scenario(t)
     }
 
     #[test]
     fn two_flows_pfc_ingress() {
-        let t = OneBigSwitchPFC::<IngressPFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
+        let t = OneBigSwitch::<IngressPFCSwitch>::make_topology(3, 15_000, 1_000_000, 1_000_000);
         two_flows_scenario(t)
     }
 
@@ -265,61 +400,37 @@ mod tests {
 
     #[test]
     fn victim_flow_lossy() {
-        let t = OneBigSwitch::<LossySwitch>::make_topology(4, 15_000, 1_000_000, 1_000_000);
-        victim_flow_scenario(t);
+        victim_flow_scenario::<LossySwitch>(Some(make_logger(None)));
     }
 
     #[test]
     fn victim_flow_pfc() {
-        let t = OneBigSwitch::<PFCSwitch>::make_topology(4, 15_000, 1_000_000, 1_000_000);
-        victim_flow_scenario(t);
+        victim_flow_scenario::<PFCSwitch>(Some(make_logger(None)));
+    }
+
+    #[test]
+    fn victim_flow_pfc_ingress() {
+        victim_flow_scenario::<IngressPFCSwitch>(Some(make_logger(None)));
+    }
+    
+    #[test]
+    fn sharedingress_victim_flow_pfc_ingress() {
+        sharedingress_victim_flow_scenario::<IngressPFCSwitch>(Some(make_logger(None)));
     }
 
     #[test]
     fn victim_flow_nacks() {
-        let t = OneBigSwitch::<NackSwitch>::make_topology(4, 15_000, 1_000_000, 1_000_000);
-        victim_flow_scenario(t);
+        victim_flow_scenario::<NackSwitch>(Some(make_logger(None)));
     }
 
-    fn victim_flow_scenario<S: Switch>(t: Topology<S>) {
-        let mut e = Executor::new(t, make_logger(None));
+    fn sharedingress_victim_flow_scenario<S: Switch>(logger: Option<slog::Logger>) {
+        let e = super::SharedIngressVictimFlowScenario::make::<S>(logger);
+        let mut e = e.execute().unwrap();
+        assert!(e.components().1.all_flows().all(|f| f.completion_time().is_some()));
+    }
 
-        let flow = FlowInfo{
-            flow_id: 0,
-            sender_id: 0,
-            dest_id: 1,
-            length_bytes: 43800, // 30 packet flow
-            max_packet_length: 1460,
-        };
-
-        // starts at t = 1.1s
-        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_100_000_000, PhantomData::<ConstCwnd>));
-        e.push(flow_arrival);
-
-        let flow = FlowInfo{
-            flow_id: 1,
-            sender_id: 2,
-            dest_id: 0,
-            length_bytes: 43800, // 30 packet flow
-            max_packet_length: 1460,
-        };
-
-        // starts at t = 1.0s
-        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
-        e.push(flow_arrival);
-        
-        let flow = FlowInfo{
-            flow_id: 2,
-            sender_id: 3,
-            dest_id: 0,
-            length_bytes: 43800, // 30 packet flow
-            max_packet_length: 1460,
-        };
-
-        // starts at t = 1.0s
-        let flow_arrival = Box::new(FlowArrivalEvent(flow, 1_000_000_000, PhantomData::<ConstCwnd>));
-        e.push(flow_arrival);
-
+    fn victim_flow_scenario<S: Switch>(logger: Option<slog::Logger>) {
+        let e = super::IndependentVictimFlowScenario::make::<S>(logger);
         let mut e = e.execute().unwrap();
         assert!(e.components().1.all_flows().all(|f| f.completion_time().is_some()));
     }

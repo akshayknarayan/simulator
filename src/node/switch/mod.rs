@@ -44,6 +44,10 @@ pub trait Switch: Debug {
     fn is_active(&self) -> bool;
 }
 
+/// Marker trait that indicates to `TopologyStrategy` instances that the links
+/// should have `pfc_enabled` set to `true` (`false` by default).
+pub trait PFCSwitchFamily: Switch {}
+
 impl<S: Switch> Node for S {
     fn id(&self) -> u32 {
         self.id()

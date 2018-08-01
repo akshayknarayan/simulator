@@ -6,7 +6,7 @@ use ::{Nanos, Result};
 use event::Event;
 use node::{NodeTransmitEvent, Link};
 use packet::Packet;
-use super::{Switch, Queue};
+use super::{Switch, PFCSwitchFamily, Queue};
 
 /// PFCSwitch uses a *static* and *queue-agnostic* PFC threshold.
 /// This means that once the queue headroom decreases below a static threshold, it PAUSEs *all*
@@ -20,6 +20,8 @@ pub struct PFCSwitch {
     pub rack: Vec<(Box<Queue>, bool)>, // a queue to send, and whether we have paused the corresponding incoming queue 
     pub core: Vec<(Box<Queue>, bool)>, // a queue to send, and whether we have paused the corresponding incoming queue 
 }
+
+impl PFCSwitchFamily for PFCSwitch {}
 
 impl PFCSwitch {
     fn pause_incoming(&mut self, time: Nanos, logger: Option<&slog::Logger>) {
@@ -242,6 +244,8 @@ use std::collections::HashMap;
 
 #[derive(Default, Debug)]
 pub struct IngressPFCSwitch(PFCSwitch, HashMap<u32, u32>, HashMap<Packet, u32>);
+
+impl PFCSwitchFamily for IngressPFCSwitch {}
 
 impl Switch for IngressPFCSwitch {
     fn new(

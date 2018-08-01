@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use Nanos;
 use node::{Host, Link};
-use node::switch::{Switch, Queue};
+use node::switch::{Switch, PFCSwitchFamily, Queue};
 use node::switch::drop_tail_queue::DropTailQueue;
 
 use super::{Topology, TopologyStrategy};
@@ -71,8 +71,9 @@ fn topology<S: Switch>(
 }
 
 pub struct OneBigSwitch<S: Switch>(PhantomData<S>);
+
 impl<S: Switch> TopologyStrategy<S> for OneBigSwitch<S> {
-    fn make_topology(
+    default fn make_topology(
         num_hosts: u32,
         queue_length_bytes: u32,
         access_link_bandwidth: u64,
@@ -99,8 +100,7 @@ impl<S: Switch> TopologyStrategy<S> for OneBigSwitch<S> {
     }
 }
 
-pub struct OneBigSwitchPFC<S: Switch>(PhantomData<S>);
-impl<S: Switch> TopologyStrategy<S> for OneBigSwitchPFC<S> {
+impl<S: PFCSwitchFamily> TopologyStrategy<S> for OneBigSwitch<S> {
     fn make_topology(
         num_hosts: u32,
         queue_length_bytes: u32,
