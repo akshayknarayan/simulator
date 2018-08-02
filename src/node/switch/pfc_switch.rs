@@ -296,23 +296,20 @@ impl Switch for IngressPFCSwitch {
                                 .and_modify(|occ| { *occ += p.get_size_bytes(); })
                                 .or_insert(p.get_size_bytes());
 
-                            // TODO check that this is correct
-                            //let per_ingress_static_pfc_thresh = (out_queue.headroom() as f64 / num_links as f64) as u32 - out_queue.link().pfc_pause_threshold();
-                            //let per_ingress_static_pfc_thresh = (out_queue.link().pfc_pause_threshold() as f64 * num_links as f64) as u32;
-                            let per_ingress_static_pfc_thresh = (out_queue.headroom() as f64 / num_links as f64) as u32;
-                            if *virtual_ingress_queue_occupancy + out_queue.link().pfc_pause_threshold() > per_ingress_static_pfc_thresh {
+                            let per_ingress_static_pfc_thresh = ((out_queue.headroom() - out_queue.link().pfc_pause_threshold()) as f64 / num_links as f64) as u32;
+                            if *virtual_ingress_queue_occupancy > per_ingress_static_pfc_thresh {
                                 // PAUSE this ingress queue
                                 queue_to_pause = Some(l.from);
                             }
 
-                            //if let Some(log) = logger {
-                            //    debug!(log, "enqueue";
-                            //        "headroom" => out_queue.headroom(),
-                            //        "ingress-occupancy" => *virtual_ingress_queue_occupancy,
-                            //        "in_link" => ?l,
-                            //        "out_link" => ?out_queue.link(),
-                            //    );
-                            //}
+                            if let Some(log) = logger {
+                                trace!(log, "enqueue";
+                                    "headroom" => out_queue.headroom(),
+                                    "ingress-occupancy" => *virtual_ingress_queue_occupancy,
+                                    "in_link" => ?l,
+                                    "out_link" => ?out_queue.link(),
+                                );
+                            }
                         }
 					});
 
@@ -372,7 +369,7 @@ impl Switch for IngressPFCSwitch {
                             }
 
                             if let Some(log) = logger {
-                                debug!(log, "dequeue";
+                                trace!(log, "dequeue";
                                     "headroom" => q.headroom(),
                                     "ingress-occupancy" => *virtual_ingress_queue_occupancy,
                                     "resume" => ?queue_to_resume,
