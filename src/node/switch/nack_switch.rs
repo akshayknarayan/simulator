@@ -54,7 +54,6 @@ impl Switch for NackSwitch {
         }
         // switches are output queued
         match p {
-            Packet::Pause(_) | Packet::Resume(_) => Ok(vec![]),
             Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} => {
 				self.rack
@@ -167,6 +166,7 @@ impl Switch for NackSwitch {
                 
                 Ok(vec![])
             }
+            _ => Ok(vec![]),
         }
     }
 

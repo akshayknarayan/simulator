@@ -24,7 +24,7 @@ pub struct PFCSwitch {
 impl PFCSwitchFamily for PFCSwitch {}
 
 impl PFCSwitch {
-    fn pause_incoming(&mut self, time: Nanos, logger: Option<&slog::Logger>) {
+    fn pause_incoming(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) {
         let id = self.id;
 
         self.rack
@@ -43,21 +43,14 @@ impl PFCSwitch {
                 // 3. B sends PAUSE to A, but it is corrupted (possible?)
                 // 4. B receives packet P
                 // 5. B sends PAUSE again
-                if let Some(log) = logger {
-                    debug!(log, "tx";
-                        "time" => time,
-                        "node" => id,
-                        "packet" => ?Packet::Pause(id),
-                    );
-                }
-
                 // send pause to upstream queue
                 *already_paused = true;
-                q.force_tx_next(Packet::Pause(id)).unwrap();
+                let to = q.link().to;
+                q.force_tx_next(Packet::Pause(id, to)).unwrap();
             });
     }
 
-    fn resume_incoming(&mut self, time: Nanos, logger: Option<&slog::Logger>) {
+    fn resume_incoming(&mut self, _time: Nanos, _logger: Option<&slog::Logger>) {
         let id = self.id;
 
         self.rack
@@ -65,16 +58,9 @@ impl PFCSwitch {
             .chain(self.core.iter_mut())
             .filter(|(_, already_paused)| *already_paused)
             .for_each(|(q, ref mut already_paused)| {
-                if let Some(log) = logger {
-                    debug!(log, "tx";
-                        "time" => time,
-                        "node" => id,
-                        "packet" => ?Packet::Resume(id), 
-                    );
-                }
-
                 *already_paused = false;
-                q.force_tx_next(Packet::Resume(id)).unwrap();
+                let to = q.link().to;
+                q.force_tx_next(Packet::Resume(id, to)).unwrap();
             });
     }
 }
@@ -115,7 +101,7 @@ impl Switch for PFCSwitch {
 
         // switches are output queued
         match p {
-            Packet::Pause(from) => {
+            Packet::Pause(from, _) => {
 				self.rack
 					.iter_mut()
 					.find(|(ref q, _)| {
@@ -128,7 +114,7 @@ impl Switch for PFCSwitch {
 
                 Ok(vec![])
 			}
-			Packet::Resume(from) => {
+			Packet::Resume(from, _) => {
 				self.rack
 					.iter_mut()
 					.find(|(ref q, _)| {
@@ -267,8 +253,8 @@ impl Switch for IngressPFCSwitch {
         logger: Option<&slog::Logger>,
     ) -> Result<Vec<Box<Event>>> {
         match p {
-            Packet::Pause(_) |
-			Packet::Resume(_) => {
+            Packet::Pause(_, _) |
+			Packet::Resume(_, _) => {
                 self.0.receive(p, l, time, logger)
 			},
             Packet::Nack{hdr, ..} |
@@ -340,7 +326,7 @@ impl Switch for IngressPFCSwitch {
                         .map(|(q, ref mut already_paused)| {
                             if !*already_paused {
                                 *already_paused = true;
-                                q.force_tx_next(Packet::Pause(id)).unwrap();
+                                q.force_tx_next(Packet::Pause(id, to_pause)).unwrap();
                             }
                         });
                 }
@@ -418,16 +404,8 @@ impl Switch for IngressPFCSwitch {
                 })
                 .map(|(q, ref mut already_paused)| {
                     if *already_paused {
-                        if let Some(log) = logger {
-                            debug!(log, "tx";
-                                "time" => time,
-                                "node" => id,
-                                "packet" => ?Packet::Resume(id),
-                            );
-                        }
-
                         *already_paused = false;
-                        q.force_tx_next(Packet::Resume(id)).unwrap();
+                        q.force_tx_next(Packet::Resume(id, to_resume)).unwrap();
                     }
                 });
         }

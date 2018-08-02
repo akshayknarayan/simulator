@@ -51,7 +51,6 @@ impl Switch for LossySwitch {
         }
         // switches are output queued
         match p {
-            Packet::Pause(_) | Packet::Resume(_) => Ok(vec![]),
             Packet::Nack{hdr, ..} |
             Packet::Ack{hdr, ..} |
             Packet::Data{hdr, ..} => {
@@ -79,6 +78,7 @@ impl Switch for LossySwitch {
                 
                 Ok(vec![])
             }
+            _ => Ok(vec![]),
         }
     }
 

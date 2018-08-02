@@ -123,7 +123,7 @@ impl Node for Host {
                     );
                 }
             }
-            Packet::Pause(_) => {
+            Packet::Pause(_, _) => {
                 self.paused = true;
                 if let Some(log) = logger {
                     debug!(log, "pausing";
@@ -131,7 +131,7 @@ impl Node for Host {
                     );
                 }
             }
-            Packet::Resume(_) => {
+            Packet::Resume(_, _) => {
                 self.paused = false;
                 if let Some(log) = logger {
                     debug!(log, "resuming";

@@ -62,7 +62,7 @@ impl<CC: CongAlg> Flow for GoBackNSender<CC> {
                 self.retx_timeout = time;
                 self.got_ack(pkt, time, logger)
             }
-            Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
     
@@ -127,7 +127,7 @@ impl<CC: CongAlg> GoBackNSender<CC> {
                 self.cong_control.reduction(ReductionType::Drop);
                 self.go_back_n(nacked_seq).map(|v| (v, true))
             }
-            Packet::Data{..} | Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 
@@ -198,8 +198,7 @@ impl Flow for GoBackNReceiver {
     fn receive(&mut self, time: Nanos, pkt: Packet, logger: Option<&slog::Logger>) -> Result<(Vec<Packet>, bool)> {
         match pkt {
             Packet::Data{..} => self.got_data(pkt, time, logger).map(|v| (v, false)),
-            Packet::Ack{..} | Packet::Nack{..} => unreachable!(),
-            Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
     
@@ -264,7 +263,7 @@ impl GoBackNReceiver {
                     }
                 }
             }
-            Packet::Ack{..} | Packet::Nack{..} | Packet::Pause(_) | Packet::Resume(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
